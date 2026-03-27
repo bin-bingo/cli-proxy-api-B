@@ -6,9 +6,9 @@ body {
 }
 
 .page {
-  max-width: 1280px;
+  max-width: 1320px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 28px 24px 40px;
 }
 
 .hero, .grid, .cards {
@@ -19,11 +19,18 @@ body {
 .hero {
   grid-template-columns: 1fr auto;
   align-items: center;
+  padding: 20px 22px;
+  background: linear-gradient(180deg, rgba(41,56,104,0.35), rgba(18,25,51,0.4));
+  border: 1px solid #223058;
+  border-radius: 20px;
 }
 
 .cards {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 24px 0;
+}
+.cards.cards-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .grid {
@@ -33,23 +40,53 @@ body {
 .card, .panel {
   background: #121933;
   border: 1px solid #223058;
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 18px;
+  box-shadow: 0 6px 20px rgba(4, 10, 24, 0.18);
+}
+
+.highlight-panel {
+  border-color: #3559d8;
+  box-shadow: 0 8px 24px rgba(53, 89, 216, 0.15);
+}
+
+.soft-panel {
+  background: #0f1730;
 }
 
 .card.ok { border-color: #1f8f53; }
 .card.warn { border-color: #c4871f; }
+.card.warn2 { border-color: #b36b19; }
 .card.bad { border-color: #b13b3b; }
 
 .metric {
   font-size: 2rem;
   font-weight: 700;
+  margin-top: 6px;
+}
+
+.substate-list {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #cfd8f4;
 }
 
 .actions, .inline-form {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.h1, h1 {
+  margin: 0 0 8px;
+}
+
+.hero p {
+  margin: 0;
+  color: #b8c7eb;
+  max-width: 760px;
+  line-height: 1.55;
 }
 
 .big-cta-form {
@@ -112,6 +149,7 @@ button {
   cursor: pointer;
   background: #3559d8;
   border-color: #3559d8;
+  font-weight: 600;
 }
 
 button:hover {
@@ -250,6 +288,12 @@ th, td {
   border: 1px solid #223058;
 }
 
+@media (max-width: 1100px) {
+  .cards.cards-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 960px) {
   .hero, .grid, .cards {
     grid-template-columns: 1fr;
@@ -257,5 +301,11 @@ th, td {
 
   .settings-form {
     grid-template-columns: 1fr;
+  }
+
+  .actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
   }
 }
