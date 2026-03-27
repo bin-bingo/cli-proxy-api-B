@@ -46,13 +46,17 @@
       <article class="panel highlight-panel">
         <h2>池子概览</h2>
         <ul class="kv">
-          <li><span>最近扫描</span><strong>{{ status.summary.last_scan_at or '-' }}</strong></li>
+          <li><span>最近扫描</span><strong class="fmt-time">{{ status.summary.last_scan_at or '-' }}</strong></li>
+          <li><span>上次扫描结果</span><strong>{{ status.summary.last_scan_result or '-' }}</strong></li>
+          <li><span>新增账号</span><strong>{{ status.summary.added_count }}</strong></li>
+          <li><span>清除账号</span><strong>{{ status.summary.removed_count }}</strong></li>
+          <li><span>自动清除</span><strong>{{ status.summary.cleanup_mode }}</strong></li>
           <li><span>需要补池</span><strong>{% if status.summary.replenish_cooldown_until %}暂停（冷却中）{% else %}{{ '是' if status.summary.needs_replenish else '否' }}{% endif %}</strong></li>
           <li><span>可用库存（除失效外全部计入 + 在途）</span><strong>{{ status.summary.total_count - status.summary.dead_count + status.summary.in_flight_replenish_count }}</strong></li>
           <li><span>在途补池</span><strong>{{ status.summary.in_flight_replenish_count }}</strong></li>
-          <li><span>补池冷却至</span><strong>{{ status.summary.replenish_cooldown_until or '-' }}</strong></li>
+          <li><span>补池冷却至</span><strong class="fmt-time">{{ status.summary.replenish_cooldown_until or '-' }}</strong></li>
           <li><span>建议补量</span><strong>{{ status.summary.replenish_count }}</strong></li>
-          <li><span>最近补池</span><strong>{{ status.summary.last_replenish_at or '-' }}</strong></li>
+          <li><span>最近补池</span><strong class="fmt-time">{{ status.summary.last_replenish_at or '-' }}</strong></li>
           <li><span>补池结果</span><strong>{{ status.summary.last_replenish_result or '-' }}</strong></li>
         </ul>
       </article>

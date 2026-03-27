@@ -266,13 +266,21 @@ class PoolMaintainerService:
         dead_count = sum(1 for item in records if item.status == "dead")
         unknown_count = sum(1 for item in records if item.status == "unknown")
 
+        previous_total = self.state.summary.total_count if self.state.summary else 0
+        current_total = len(records)
+        added_count = max(0, current_total - previous_total)
+        removed_count = max(0, previous_total - current_total)
+
         summary = PoolSummary(
-            total_count=len(records),
+            total_count=current_total,
             healthy_count=healthy_count,
             pending_count=pending_count,
             degraded_count=degraded_count,
             dead_count=dead_count,
             unknown_count=unknown_count,
+            added_count=added_count,
+            removed_count=removed_count,
+            cleanup_mode="未启用自动清除",
             last_scan_at=utc_now().isoformat(),
         )
         cooldown_until = None
@@ -297,6 +305,9 @@ class PoolMaintainerService:
             max(0, self.runtime_settings.target_healthy_count - available_count)
             if summary.needs_replenish
             else 0
+        )
+        summary.last_scan_result = (
+            f"健康 {healthy_count} / 待确认 {pending_count} / 差 {degraded_count} / 失效 {dead_count}"
         )
 
         self.state.auth_records = records

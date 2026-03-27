@@ -48,6 +48,10 @@ class PoolSummary:
     replenish_cooldown_until: str | None = None
     needs_replenish: bool = False
     replenish_count: int = 0
+    added_count: int = 0
+    removed_count: int = 0
+    last_scan_result: str | None = None
+    cleanup_mode: str = "未启用自动清除"
     last_scan_at: str | None = None
     last_replenish_at: str | None = None
     last_replenish_result: str | None = None
