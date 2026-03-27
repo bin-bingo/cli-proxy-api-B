@@ -55,6 +55,123 @@ def _pick_quota_percent(payload: dict[str, Any]) -> float | None:
     return None
 
 
+def _safe_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return value
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except Exception:
+        return None
+
+
+def _extract_used_percent_from_probe(probe_payload: dict[str, Any]) -> float | None:
+    body = _safe_json_value(probe_payload.get("body"))
+    if not isinstance(body, dict):
+        return None
+    rate_limit = body.get("rate_limit")
+    if isinstance(rate_limit, dict):
+        primary = rate_limit.get("primary_window")
+        if isinstance(primary, dict):
+            value = primary.get("used_percent")
+            if isinstance(value, (int, float)):
+                return float(value)
+    return None
+
+
+def _is_invalid_probe(probe_payload: dict[str, Any], status_code: int | None) -> bool:
+    haystacks = [
+        str(probe_payload.get("error") or "").lower(),
+        str(probe_payload.get("message") or "").lower(),
+        str(probe_payload.get("body") or "").lower(),
+        str(probe_payload.get("raw") or "").lower(),
+    ]
+    if isinstance(status_code, int) and status_code == 401:
+        return True
+    return any(
+        token in text
+        for text in haystacks
+        for token in (
+            "token_revoked",
+            "refresh_token_reused",
+            "unauthorized",
+            "invalidated oauth token",
+        )
+    )
+
+
+def apply_probe_matrix(
+    record: AuthRecord, probe_results: dict[str, tuple[int, dict[str, Any]]]
+) -> AuthRecord:
+    serializable: dict[str, Any] = {}
+    for name, (probe_status, payload) in probe_results.items():
+        status_code = payload.get("status_code", probe_status)
+        serializable[name] = {
+            "probe_status": probe_status,
+            "status_code": status_code,
+            "error": payload.get("error") or payload.get("message"),
+        }
+        if _is_invalid_probe(
+            payload, status_code if isinstance(status_code, int) else None
+        ):
+            record.healthy = False
+            record.status = "dead"
+            record.reason = f"probe invalid ({name})"
+            record.metadata["probe_results"] = serializable
+            return record
+
+    used_percent = None
+    for name in ("wham_usage", "codex_usage"):
+        result = probe_results.get(name)
+        if not result:
+            continue
+        _, payload = result
+        used_percent = _extract_used_percent_from_probe(payload)
+        if used_percent is not None:
+            break
+    if used_percent is not None:
+        record.quota_used_percent = used_percent
+        if used_percent >= settings.usage_exhaust_threshold:
+            record.healthy = False
+            record.status = "degraded"
+            record.reason = f"used_percent high ({used_percent:.1f}%)"
+
+    required_ok = False
+    required_failed = []
+    for name in ("me", "wham_usage"):
+        if name not in probe_results:
+            required_failed.append(name)
+            continue
+        probe_status, payload = probe_results[name]
+        status_code = payload.get("status_code", probe_status)
+        if isinstance(status_code, int) and 200 <= status_code < 300:
+            required_ok = True
+        else:
+            required_failed.append(name)
+
+    if record.status == "dead":
+        record.metadata["probe_results"] = serializable
+        return record
+
+    if required_ok and record.status != "degraded":
+        record.healthy = True
+        record.status = "healthy"
+        record.reason = "live probe ok"
+    elif required_failed:
+        record.healthy = False
+        record.status = "pending"
+        record.reason = f"probe pending ({', '.join(required_failed)})"
+
+    record.metadata["probe_results"] = serializable
+    return record
+
+
 def evaluate_auth_file(
     path: Path,
     global_signals: dict[str, Any],
@@ -87,11 +204,23 @@ def evaluate_auth_file(
         remote_unavailable = bool(remote.get("unavailable"))
         remote_message = str(remote.get("status_message") or "").lower()
         if remote_status == "error" or remote_unavailable:
-            if any(key in remote_message for key in ("401", "token_revoked", "unauthorized", "refresh_token_reused")):
+            if any(
+                key in remote_message
+                for key in (
+                    "401",
+                    "token_revoked",
+                    "unauthorized",
+                    "refresh_token_reused",
+                )
+            ):
                 status = "dead"
                 healthy = False
                 reason = "cpa marked invalid"
-        if healthy and quota_percent is not None and quota_percent >= settings.usage_exhaust_threshold:
+        if (
+            healthy
+            and quota_percent is not None
+            and quota_percent >= settings.usage_exhaust_threshold
+        ):
             status = "degraded"
             healthy = False
             reason = f"quota threshold reached ({quota_percent:.1f}%)"
@@ -124,12 +253,18 @@ def evaluate_auth_file(
             "remote_unavailable": remote.get("unavailable"),
             "remote_status_message": remote.get("status_message"),
             "remote_auth_index": remote.get("auth_index"),
-            "remote_account_id": (remote.get("id_token") or {}).get("chatgpt_account_id") if isinstance(remote.get("id_token"), dict) else None,
+            "remote_account_id": (remote.get("id_token") or {}).get(
+                "chatgpt_account_id"
+            )
+            if isinstance(remote.get("id_token"), dict)
+            else None,
         },
     )
 
 
-def apply_probe_result(record: AuthRecord, probe_status: int, probe_payload: dict[str, Any]) -> AuthRecord:
+def apply_probe_result(
+    record: AuthRecord, probe_status: int, probe_payload: dict[str, Any]
+) -> AuthRecord:
     status_code = probe_payload.get("status_code", probe_status)
     body_text = str(probe_payload.get("body") or probe_payload.get("raw") or "")
     error_text = str(probe_payload.get("error") or probe_payload.get("message") or "")
@@ -137,7 +272,11 @@ def apply_probe_result(record: AuthRecord, probe_status: int, probe_payload: dic
     record.metadata["probe_status_code"] = status_code
     record.metadata["probe_error"] = error_text
 
-    if probe_status == 200 and isinstance(status_code, int) and 200 <= status_code < 300:
+    if (
+        probe_status == 200
+        and isinstance(status_code, int)
+        and 200 <= status_code < 300
+    ):
         if record.status != "dead":
             record.healthy = True
             record.status = "healthy"

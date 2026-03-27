@@ -14,7 +14,7 @@ from .config import (
     save_runtime_settings,
     settings,
 )
-from .health import apply_probe_result, evaluate_auth_file
+from .health import apply_probe_matrix, evaluate_auth_file
 from datetime import datetime, timedelta, timezone
 from .models import AuthRecord, PoolState, PoolSummary, utc_now
 from .replenisher import run_replenish
@@ -213,7 +213,11 @@ class PoolMaintainerService:
             save_runtime_settings(runtime)
             self._refresh_client()
             if self.state.summary:
-                self.state.summary.cleanup_mode = "已启用，仅清除明确失效账号" if runtime.auto_cleanup_enabled else "未启用自动清除"
+                self.state.summary.cleanup_mode = (
+                    "已启用，仅清除明确失效账号"
+                    if runtime.auto_cleanup_enabled
+                    else "未启用自动清除"
+                )
             self.state.settings_snapshot = self.settings_snapshot()
             self._save_state()
             return runtime
@@ -232,7 +236,9 @@ class PoolMaintainerService:
         self.state.settings_snapshot = self.settings_snapshot()
         write_json(settings.state_file, self.state.to_dict())
 
-    def scan_once_sync(self, trigger: str = "manual", concurrency: int = 8) -> PoolState:
+    def scan_once_sync(
+        self, trigger: str = "manual", concurrency: int = 8
+    ) -> PoolState:
         auth_files_status, auth_files_remote = self.client.list_auth_files()
         auth_status_code, auth_status = self.client.get_auth_status()
         usage_code, usage = self.client.get_usage()
@@ -251,7 +257,10 @@ class PoolMaintainerService:
 
         auth_dir = Path(self.runtime_settings.auth_dir)
         files = sorted(auth_dir.glob("*.json"))
-        remote_by_name = {str(item.get("name") or item.get("id") or ""): item for item in auth_files_remote}
+        remote_by_name = {
+            str(item.get("name") or item.get("id") or ""): item
+            for item in auth_files_remote
+        }
         previous_failures_map = self._previous_failure_map()
         base_records = [
             (
@@ -269,9 +278,16 @@ class PoolMaintainerService:
 
         def probe_item(item: tuple[Path, dict[str, Any], AuthRecord]) -> AuthRecord:
             path, remote_meta, record = item
-            if not self.runtime_settings.cliproxy_management_key or record.status == "dead":
+            if (
+                not self.runtime_settings.cliproxy_management_key
+                or record.status == "dead"
+            ):
                 return record
-            auth_index = str(remote_meta.get("auth_index") or remote_meta.get("authIndex") or path.name)
+            auth_index = str(
+                remote_meta.get("auth_index")
+                or remote_meta.get("authIndex")
+                or path.name
+            )
             account_id = None
             id_token = remote_meta.get("id_token")
             if isinstance(id_token, dict):
@@ -284,25 +300,29 @@ class PoolMaintainerService:
             }
             if account_id:
                 probe_header["Chatgpt-Account-Id"] = str(account_id)
-            probe_payload = {
-                "authIndex": auth_index,
-                "method": "GET",
-                "url": "https://chatgpt.com/backend-api/wham/usage",
-                "header": probe_header,
+            probe_targets = {
+                "me": ("https://chatgpt.com/backend-api/me", 4),
+                "wham_usage": ("https://chatgpt.com/backend-api/wham/usage", 4),
+                "codex_usage": ("https://chatgpt.com/backend-api/codex/usage", 3),
             }
-            probe_status, probe_result = self.client.post_api_call(probe_payload, timeout=4)
-            if probe_status > 0:
-                return apply_probe_result(record, probe_status, probe_result)
-            record.metadata["probe_status_code"] = 0
-            record.metadata["probe_error"] = str(probe_result.get("error") or "probe timeout")
-            if record.status != "dead":
-                record.status = "degraded"
-                record.healthy = False
-                record.reason = "probe timeout/failed"
-            return record
+            probe_results: dict[str, tuple[int, dict[str, Any]]] = {}
+            for probe_name, (url, timeout) in probe_targets.items():
+                payload = {
+                    "authIndex": auth_index,
+                    "method": "GET",
+                    "url": url,
+                    "header": probe_header,
+                }
+                probe_results[probe_name] = self.client.post_api_call(
+                    payload, timeout=timeout
+                )
+            return apply_probe_matrix(record, probe_results)
 
         import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, concurrency)) as executor:
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=max(1, concurrency)
+        ) as executor:
             results = list(executor.map(probe_item, base_records))
         records = results
 
@@ -324,7 +344,9 @@ class PoolMaintainerService:
                 records = [item for item in records if item.status != "dead"]
         current_total = len(records)
         added_count = max(0, current_total - previous_total)
-        removed_count = cleanup_removed if self.runtime_settings.auto_cleanup_enabled else 0
+        removed_count = (
+            cleanup_removed if self.runtime_settings.auto_cleanup_enabled else 0
+        )
 
         summary = PoolSummary(
             total_count=current_total,
@@ -335,12 +357,18 @@ class PoolMaintainerService:
             unknown_count=unknown_count,
             added_count=added_count,
             removed_count=removed_count,
-            cleanup_mode="已启用，仅清除明确失效账号" if self.runtime_settings.auto_cleanup_enabled else "未启用自动清除",
+            cleanup_mode="已启用，仅清除明确失效账号"
+            if self.runtime_settings.auto_cleanup_enabled
+            else "未启用自动清除",
             last_scan_at=utc_now().isoformat(),
         )
         cooldown_until = None
-        in_flight = self.state.summary.in_flight_replenish_count if self.state.summary else 0
-        raw_cooldown = self.state.summary.replenish_cooldown_until if self.state.summary else None
+        in_flight = (
+            self.state.summary.in_flight_replenish_count if self.state.summary else 0
+        )
+        raw_cooldown = (
+            self.state.summary.replenish_cooldown_until if self.state.summary else None
+        )
         if raw_cooldown:
             try:
                 cooldown_until = datetime.fromisoformat(raw_cooldown)
@@ -352,7 +380,9 @@ class PoolMaintainerService:
 
         available_count = summary.total_count - summary.dead_count + in_flight
         summary.in_flight_replenish_count = in_flight
-        summary.replenish_cooldown_until = cooldown_until.isoformat() if cooldown_until else None
+        summary.replenish_cooldown_until = (
+            cooldown_until.isoformat() if cooldown_until else None
+        )
         summary.needs_replenish = (
             available_count < self.runtime_settings.min_healthy_count
         )
@@ -361,9 +391,7 @@ class PoolMaintainerService:
             if summary.needs_replenish
             else 0
         )
-        summary.last_scan_result = (
-            f"健康 {healthy_count} / 待确认 {pending_count} / 差 {degraded_count} / 失效 {dead_count}"
-        )
+        summary.last_scan_result = f"健康 {healthy_count} / 待确认 {pending_count} / 差 {degraded_count} / 失效 {dead_count}"
 
         self.state.auth_records = records
         self.state.summary = summary
@@ -382,7 +410,11 @@ class PoolMaintainerService:
             },
         )
 
-        if self.runtime_settings.auto_replenish_enabled and summary.replenish_count > 0 and not summary.replenish_cooldown_until:
+        if (
+            self.runtime_settings.auto_replenish_enabled
+            and summary.replenish_count > 0
+            and not summary.replenish_cooldown_until
+        ):
             replenish = run_replenish(summary.replenish_count, self.runtime_settings)
             self.state.summary.last_replenish_at = replenish.executed_at
             self.state.summary.last_replenish_result = replenish.message
@@ -468,12 +500,16 @@ class PoolMaintainerService:
         url = f"{base_url}/login"
         request = urllib.request.Request(url=url, headers={"Accept": "text/html"})
         try:
-            with urllib.request.urlopen(request, timeout=self.runtime_settings.cliproxy_timeout_seconds) as response:
+            with urllib.request.urlopen(
+                request, timeout=self.runtime_settings.cliproxy_timeout_seconds
+            ) as response:
                 result = {
                     "target": "registration",
                     "ok": 200 <= response.status < 300,
                     "status_code": response.status,
-                    "message": "Registration connection ok" if 200 <= response.status < 300 else "Registration connection returned non-OK status",
+                    "message": "Registration connection ok"
+                    if 200 <= response.status < 300
+                    else "Registration connection returned non-OK status",
                     "details": {"url": url},
                     "checked_at": utc_now().isoformat(),
                 }
