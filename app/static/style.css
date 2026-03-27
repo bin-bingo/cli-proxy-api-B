@@ -52,6 +52,10 @@ body {
   align-items: center;
 }
 
+.big-cta-form {
+  align-items: stretch;
+}
+
 button, input {
   border-radius: 10px;
   border: 1px solid #334776;
@@ -60,10 +64,50 @@ button, input {
   color: #f6f8ff;
 }
 
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.settings-form input[type="text"],
+.settings-form input[type="password"],
+.settings-form input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+}
+
+.settings-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+
 button {
   cursor: pointer;
   background: #3559d8;
   border-color: #3559d8;
+}
+
+.big-cta {
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 14px 22px;
+  min-height: 52px;
+  background: linear-gradient(120deg, #7c3aed, #3559d8);
+  box-shadow: 0 8px 18px rgba(76, 100, 217, 0.35);
 }
 
 table {
@@ -114,6 +158,10 @@ th, td {
 
 @media (max-width: 960px) {
   .hero, .grid, .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-form {
     grid-template-columns: 1fr;
   }
 }

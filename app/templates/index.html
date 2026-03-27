@@ -17,9 +17,9 @@
         <form method="post" action="/scan">
           <button type="submit">立即扫描</button>
         </form>
-        <form method="post" action="/replenish" class="inline-form">
+        <form method="post" action="/replenish" class="inline-form big-cta-form">
           <input type="number" name="count" min="0" placeholder="补号数（空=自动）" />
-          <button type="submit">立即补池</button>
+          <button type="submit" class="big-cta">立即补池</button>
         </form>
       </div>
     </section>
@@ -47,12 +47,100 @@
         <ul class="kv">
           <li><span>CLIProxyAPI</span><strong>{{ settings.cliproxy_base_url }}</strong></li>
           <li><span>Auth 目录</span><strong>{{ settings.auth_dir }}</strong></li>
+          <li><span>CPA Key 已配置</span><strong>{{ '是' if settings.cliproxy_management_key_configured else '否' }}</strong></li>
+          <li><span>注册机 Key 已配置</span><strong>{{ '是' if settings.registration_key_configured else '否' }}</strong></li>
+          <li><span>注册机地址</span><strong>{{ settings.registration_base_url or '-' }}</strong></li>
+          <li><span>注册机 CPA Token 已配置</span><strong>{{ '是' if settings.registration_cpa_token_configured else '否' }}</strong></li>
           <li><span>最低健康库存</span><strong>{{ settings.min_healthy_count }}</strong></li>
           <li><span>目标健康库存</span><strong>{{ settings.target_healthy_count }}</strong></li>
           <li><span>自动扫描</span><strong>{{ '开' if settings.auto_scan_enabled else '关' }}</strong></li>
           <li><span>自动补池</span><strong>{{ '开' if settings.auto_replenish_enabled else '关' }}</strong></li>
         </ul>
       </article>
+    </section>
+
+    <section class="panel">
+      <h2>运行配置</h2>
+      <form method="post" action="/settings" class="settings-form">
+        <label>CLIProxyAPI 地址
+          <input type="text" name="cliproxy_base_url" value="{{ settings.cliproxy_base_url }}" />
+        </label>
+        <label>CPA 管理 Key
+          <input type="password" name="cliproxy_management_key" value="{{ status.settings_snapshot.cliproxy_management_key if status.settings_snapshot.cliproxy_management_key is defined else '' }}" />
+        </label>
+        <label>Auth 目录
+          <input type="text" name="auth_dir" value="{{ settings.auth_dir }}" />
+        </label>
+        <label>CLIProxy 超时秒数
+          <input type="number" name="cliproxy_timeout_seconds" min="1" value="{{ status.settings_snapshot.cliproxy_timeout_seconds if status.settings_snapshot.cliproxy_timeout_seconds is defined else 20 }}" />
+        </label>
+        <label>最低健康库存
+          <input type="number" name="min_healthy_count" min="0" value="{{ settings.min_healthy_count }}" />
+        </label>
+        <label>目标健康库存
+          <input type="number" name="target_healthy_count" min="0" value="{{ settings.target_healthy_count }}" />
+        </label>
+        <label>用量阈值(%)
+          <input type="number" step="0.1" name="usage_exhaust_threshold" min="0" value="{{ settings.usage_exhaust_threshold }}" />
+        </label>
+        <label>补池命令
+          <input type="text" name="replenish_command" value="{{ status.settings_snapshot.replenish_command if status.settings_snapshot.replenish_command is defined else '' }}" />
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" name="auto_scan_enabled" {% if settings.auto_scan_enabled %}checked{% endif %} /> 自动扫描
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" name="auto_replenish_enabled" {% if settings.auto_replenish_enabled %}checked{% endif %} /> 自动补池
+        </label>
+        <div class="settings-actions">
+          <button type="submit">保存配置</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>注册机配置</h2>
+      <form method="post" action="/settings" class="settings-form">
+        <label>注册机 Key
+          <input type="password" name="registration_key" value="{{ status.settings_snapshot.registration_key if status.settings_snapshot.registration_key is defined else '' }}" />
+        </label>
+        <label>注册机地址（可选）
+          <input type="text" name="registration_base_url" value="{{ status.settings_snapshot.registration_base_url if status.settings_snapshot.registration_base_url is defined else '' }}" />
+        </label>
+        <label>注册机使用的 CPA Token（可选）
+          <input type="password" name="registration_cpa_token" value="{{ status.settings_snapshot.registration_cpa_token if status.settings_snapshot.registration_cpa_token is defined else '' }}" />
+        </label>
+        <label>补池命令
+          <input type="text" name="replenish_command" value="{{ status.settings_snapshot.replenish_command if status.settings_snapshot.replenish_command is defined else '' }}" />
+        </label>
+        <label>CLIProxyAPI 地址
+          <input type="text" name="cliproxy_base_url" value="{{ settings.cliproxy_base_url }}" />
+        </label>
+        <label>Auth 目录
+          <input type="text" name="auth_dir" value="{{ settings.auth_dir }}" />
+        </label>
+        <label>CLIProxy 超时秒数
+          <input type="number" name="cliproxy_timeout_seconds" min="1" value="{{ status.settings_snapshot.cliproxy_timeout_seconds if status.settings_snapshot.cliproxy_timeout_seconds is defined else 20 }}" />
+        </label>
+        <label>最低健康库存
+          <input type="number" name="min_healthy_count" min="0" value="{{ settings.min_healthy_count }}" />
+        </label>
+        <label>目标健康库存
+          <input type="number" name="target_healthy_count" min="0" value="{{ settings.target_healthy_count }}" />
+        </label>
+        <label>用量阈值(%)
+          <input type="number" step="0.1" name="usage_exhaust_threshold" min="0" value="{{ settings.usage_exhaust_threshold }}" />
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" name="auto_scan_enabled" {% if settings.auto_scan_enabled %}checked{% endif %} /> 自动扫描
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" name="auto_replenish_enabled" {% if settings.auto_replenish_enabled %}checked{% endif %} /> 自动补池
+        </label>
+        <div class="settings-actions">
+          <button type="submit" class="big-cta">保存注册机配置</button>
+        </div>
+      </form>
     </section>
 
     <section class="panel">

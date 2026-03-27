@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import os
-import shlex
 import subprocess
 from dataclasses import dataclass
 
-from .config import settings
+from .config import RuntimeSettings, settings
 from .models import utc_now
 
 
@@ -29,8 +28,8 @@ class ReplenishResult:
         }
 
 
-def run_replenish(count: int) -> ReplenishResult:
-    command_template = settings.replenish_command.strip()
+def run_replenish(count: int, runtime: RuntimeSettings) -> ReplenishResult:
+    command_template = runtime.replenish_command.strip()
     if count <= 0:
         return ReplenishResult(
             False,
@@ -51,6 +50,14 @@ def run_replenish(count: int) -> ReplenishResult:
     command = command_template.replace(settings.replenish_count_placeholder, str(count))
     env = os.environ.copy()
     env.setdefault("POOL_REQUESTED_COUNT", str(count))
+    if runtime.registration_key:
+        env["REGISTRATION_KEY"] = runtime.registration_key
+    if runtime.cliproxy_management_key:
+        env.setdefault("CLIPROXY_MANAGEMENT_KEY", runtime.cliproxy_management_key)
+    if runtime.registration_base_url:
+        env["REGISTRATION_BASE_URL"] = runtime.registration_base_url
+    if runtime.registration_cpa_token:
+        env["CPA_TOKEN"] = runtime.registration_cpa_token
 
     try:
         completed = subprocess.run(
