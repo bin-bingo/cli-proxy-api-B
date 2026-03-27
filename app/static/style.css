@@ -149,6 +149,66 @@ table {
   border-collapse: collapse;
 }
 
+.toast {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #1a2750;
+  border: 1px solid #334776;
+  color: #dfe8ff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease;
+}
+.toast.on {
+  opacity: 1;
+}
+
+.accord-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.accord-toggle {
+  cursor: pointer;
+  margin: 0;
+}
+.accord-hint {
+  font-size: .85rem;
+  color: #7d8fb8;
+}
+.accord-toggle.closed:after {
+  content: " \25BC";
+}
+.accord-toggle:not(.closed):after {
+  content: " \25B2";
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  position: relative;
+}
+.spin::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ffffff40;
+  border-top-color: #fff;
+  border-radius: 50%;
+  margin-left: 8px;
+  animation: spin .8s linear infinite;
+}
+.status {
+  margin-left: 10px;
+  font-size: .9rem;
+  color: #8aa1d6;
+}
+
 th, td {
   text-align: left;
   padding: 10px 8px;

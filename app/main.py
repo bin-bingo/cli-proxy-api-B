@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -90,11 +90,12 @@ async def html_replenish(count: int = Form(0)) -> RedirectResponse:
 
 @app.post("/settings/account-keys")
 async def html_save_account_keys(
+    request: Request,
     cliproxy_base_url: str | None = Form(None),
     cliproxy_management_key: str | None = Form(None),
     registration_key: str | None = Form(None),
     registration_base_url: str | None = Form(None),
-) -> RedirectResponse:
+) -> Response:
     updates: dict[str, object] = {}
     if cliproxy_base_url is not None:
         updates["cliproxy_base_url"] = cliproxy_base_url
@@ -106,11 +107,14 @@ async def html_save_account_keys(
         updates["registration_base_url"] = registration_base_url
 
     await service.update_runtime_settings(updates)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JSONResponse({"ok": True, "message": "saved"})
     return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/settings/plugin")
 async def html_save_plugin_settings(
+    request: Request,
     cliproxy_timeout_seconds: int | None = Form(None),
     auth_dir: str | None = Form(None),
     min_healthy_count: int | None = Form(None),
@@ -119,7 +123,7 @@ async def html_save_plugin_settings(
     auto_scan_enabled: str | None = Form(None),
     auto_replenish_enabled: str | None = Form(None),
     replenish_command: str | None = Form(None),
-) -> RedirectResponse:
+) -> Response:
     updates: dict[str, object] = {}
     if cliproxy_timeout_seconds is not None:
         updates["cliproxy_timeout_seconds"] = cliproxy_timeout_seconds
@@ -137,6 +141,8 @@ async def html_save_plugin_settings(
         updates["replenish_command"] = replenish_command
 
     await service.update_runtime_settings(updates)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JSONResponse({"ok": True, "message": "saved"})
     return RedirectResponse(url="/", status_code=303)
 
 

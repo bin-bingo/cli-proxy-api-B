@@ -200,7 +200,7 @@ class PoolMaintainerService:
         self.state.settings_snapshot = self.settings_snapshot()
         write_json(settings.state_file, self.state.to_dict())
 
-    def scan_once_sync(self, trigger: str = "manual") -> PoolState:
+    def scan_once_sync(self, trigger: str = "manual", concurrency: int = 8) -> PoolState:
         auth_files_status, auth_files_remote = self.client.list_auth_files()
         auth_status_code, auth_status = self.client.get_auth_status()
         usage_code, usage = self.client.get_usage()
@@ -217,32 +217,43 @@ class PoolMaintainerService:
             "usage": usage,
         }
 
-        records: list[AuthRecord] = []
         auth_dir = Path(self.runtime_settings.auth_dir)
-        for path in sorted(auth_dir.glob("*.json")):
-            record = evaluate_auth_file(
-                path, global_signals, previous_failures=previous.get(path.name, 0)
-            )
+        files = sorted(auth_dir.glob("*.json"))
+        previous_failures_map = self._previous_failure_map()
+        base_records = [
+            (path, evaluate_auth_file(path, global_signals, previous_failures=previous_failures_map.get(path.name, 0)))
+            for path in files
+        ]
+
+        def probe_item(item: tuple[Path, AuthRecord]) -> AuthRecord:
+            path, record = item
+            if not self.runtime_settings.cliproxy_management_key:
+                return record
             probe_payload = {
                 "authIndex": path.name,
                 "method": "GET",
-                "url": "https://chatgpt.com/backend-api/me",
+                "url": "https://chatgpt.com/backend-api/wham/usage",
                 "header": {
                     "Accept": "application/json",
+                    "Content-Type": "application/json",
                     "User-Agent": "Mozilla/5.0",
                 },
             }
-            probe_status, probe_result = self.client.post_api_call(probe_payload, timeout=3)
+            probe_status, probe_result = self.client.post_api_call(probe_payload, timeout=4)
             if probe_status > 0:
-                record = apply_probe_result(record, probe_status, probe_result)
-            else:
-                record.metadata["probe_status_code"] = 0
-                record.metadata["probe_error"] = str(probe_result.get("error") or "probe timeout")
-                if record.status == "healthy":
-                    record.status = "degraded"
-                    record.healthy = False
-                    record.reason = "probe timeout"
-            records.append(record)
+                return apply_probe_result(record, probe_status, probe_result)
+            record.metadata["probe_status_code"] = 0
+            record.metadata["probe_error"] = str(probe_result.get("error") or "probe timeout")
+            if record.status != "dead":
+                record.status = "degraded"
+                record.healthy = False
+                record.reason = "probe timeout/failed"
+            return record
+
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, concurrency)) as executor:
+            results = list(executor.map(probe_item, base_records))
+        records = results
 
         summary = PoolSummary(
             total_count=len(records),

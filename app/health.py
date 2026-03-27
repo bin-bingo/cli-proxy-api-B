@@ -84,10 +84,6 @@ def evaluate_auth_file(
         status = "degraded"
         healthy = False
         reason = f"quota threshold reached ({quota_percent:.1f}%)"
-    elif not auth_status_ok or not usage_ok or not proxy_ok:
-        status = "degraded"
-        healthy = False
-        reason = "global cliproxy signals unhealthy"
 
     if healthy:
         failures = 0
@@ -126,10 +122,10 @@ def apply_probe_result(record: AuthRecord, probe_status: int, probe_payload: dic
     record.metadata["probe_error"] = error_text
 
     if probe_status == 200 and isinstance(status_code, int) and 200 <= status_code < 300:
-        record.healthy = True
-        record.status = "healthy"
-        record.reason = "live probe ok"
-        record.consecutive_failures = 0
+        if record.status != "dead":
+            record.healthy = True
+            record.status = "healthy"
+            record.reason = "live probe ok"
         lowered = body_text.lower()
         if "limit_reached" in lowered and "true" in lowered:
             record.healthy = False
@@ -145,18 +141,28 @@ def apply_probe_result(record: AuthRecord, probe_status: int, probe_payload: dic
             record.reason = "probe unauthorized"
         return record
 
-    record.healthy = False
-    record.consecutive_failures += 1
+    if record.status == "dead":
+        return record
+
     if isinstance(status_code, int) and status_code == 401:
+        record.healthy = False
         record.status = "dead"
         record.reason = "probe unauthorized"
+        record.consecutive_failures += 1
     elif isinstance(status_code, int) and status_code in {403, 429}:
+        record.healthy = False
         record.status = "degraded"
         record.reason = f"probe limited ({status_code})"
+    elif probe_status == 0:
+        record.healthy = False
+        record.status = "degraded"
+        record.reason = "probe timeout/failed"
     elif error_text:
+        record.healthy = False
         record.status = "degraded"
         record.reason = f"probe failed: {error_text[:120]}"
     else:
+        record.healthy = False
         record.status = "degraded"
         record.reason = f"probe failed ({status_code})"
     return record

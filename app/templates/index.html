@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CLIProxyAPI-B Pool Maintainer</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <script defer src="/static/app.js"></script>
 </head>
 <body>
+  <div id="toast" class="toast"></div>
+
   <main class="page">
     <section class="hero">
       <div>
@@ -14,7 +17,7 @@
         <p>先连通（CPA/注册机）→ 再定策略（池子阈值）→ 最后执行与观察（扫描/补池/明细）。</p>
       </div>
       <div class="actions">
-        <form method="post" action="/scan">
+        <form data-scan>
           <button type="submit">立即扫描</button>
         </form>
         <form method="post" action="/replenish" class="inline-form big-cta-form">
@@ -55,61 +58,73 @@
       </article>
     </section>
 
-    <section class="panel">
-      <h2>连接与凭证（先配置这一步）</h2>
-      <p class="helper">确保 CPA 与注册机都可连通后，再设置池子策略。</p>
-      <form method="post" action="/settings/account-keys" class="settings-form">
-        <label>CPA 地址
-          <input type="text" name="cliproxy_base_url" value="{{ settings.cliproxy_base_url }}" />
-        </label>
-        <label>CPA 管理 Key
-          <input type="password" name="cliproxy_management_key" value="{{ status.settings_snapshot.cliproxy_management_key if status.settings_snapshot.cliproxy_management_key is defined else '' }}" />
-        </label>
-        <label>注册机地址
-          <input type="text" name="registration_base_url" value="{{ status.settings_snapshot.registration_base_url if status.settings_snapshot.registration_base_url is defined else '' }}" />
-        </label>
-        <label>注册机 Key
-          <input type="password" name="registration_key" value="{{ status.settings_snapshot.registration_key if status.settings_snapshot.registration_key is defined else '' }}" />
-        </label>
-        <div class="settings-actions">
-          <button type="submit">保存连接与凭证</button>
-        </div>
-      </form>
-      <div class="test-action-row">
-        <form method="post" action="/test/cpa">
-          <button type="submit">测试 CPA 连接</button>
+    <section class="panel" id="sec-connect" data-accord>
+      <div class="accord-header">
+        <h2 class="accord-toggle closed">连接与凭证（先配置这一步）</h2>
+        <span class="accord-hint">收起/展开</span>
+      </div>
+      <div class="accord-body" style="display:none;">
+        <p class="helper">确保 CPA 与注册机都可连通后，再设置池子策略。</p>
+        <form data-async action="/settings/account-keys" method="post" class="settings-form">
+          <label>CPA 地址
+            <input type="text" name="cliproxy_base_url" value="{{ settings.cliproxy_base_url }}" />
+          </label>
+          <label>CPA 管理 Key
+            <input type="password" name="cliproxy_management_key" value="{{ status.settings_snapshot.cliproxy_management_key if status.settings_snapshot.cliproxy_management_key is defined else '' }}" />
+          </label>
+          <label>注册机地址
+            <input type="text" name="registration_base_url" value="{{ status.settings_snapshot.registration_base_url if status.settings_snapshot.registration_base_url is defined else '' }}" />
+          </label>
+          <label>注册机 Key
+            <input type="password" name="registration_key" value="{{ status.settings_snapshot.registration_key if status.settings_snapshot.registration_key is defined else '' }}" />
+          </label>
+          <div class="settings-actions">
+            <button type="submit">保存连接与凭证</button>
+            <span class="status"></span>
+          </div>
         </form>
-        <form method="post" action="/test/registration">
-          <button type="submit">测试注册机连接</button>
+        <div class="test-action-row">
+          <button data-test="/api/test/cpa" type="button">测试 CPA 连接</button>
+          <button data-test="/api/test/registration" type="button">测试注册机连接</button>
+          <span class="status"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="sec-strategy" data-accord>
+      <div class="accord-header">
+        <h2 class="accord-toggle closed">号池策略（常用）</h2>
+        <span class="accord-hint">收起/展开</span>
+      </div>
+      <div class="accord-body" style="display:none;">
+        <form data-async action="/settings/plugin" method="post" class="settings-form">
+          <label>最低健康库存
+            <input type="number" name="min_healthy_count" min="0" value="{{ settings.min_healthy_count }}" />
+          </label>
+          <label>目标健康库存
+            <input type="number" name="target_healthy_count" min="0" value="{{ settings.target_healthy_count }}" />
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="auto_scan_enabled" {% if settings.auto_scan_enabled %}checked{% endif %} /> 自动扫描
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="auto_replenish_enabled" {% if settings.auto_replenish_enabled %}checked{% endif %} /> 自动补池
+          </label>
+          <div class="settings-actions">
+            <button type="submit" class="big-cta">保存号池策略</button>
+            <span class="status"></span>
+          </div>
         </form>
       </div>
     </section>
 
-    <section class="panel">
-      <h2>号池策略（常用）</h2>
-      <form method="post" action="/settings/plugin" class="settings-form">
-        <label>最低健康库存
-          <input type="number" name="min_healthy_count" min="0" value="{{ settings.min_healthy_count }}" />
-        </label>
-        <label>目标健康库存
-          <input type="number" name="target_healthy_count" min="0" value="{{ settings.target_healthy_count }}" />
-        </label>
-        <label class="checkbox-row">
-          <input type="checkbox" name="auto_scan_enabled" {% if settings.auto_scan_enabled %}checked{% endif %} /> 自动扫描
-        </label>
-        <label class="checkbox-row">
-          <input type="checkbox" name="auto_replenish_enabled" {% if settings.auto_replenish_enabled %}checked{% endif %} /> 自动补池
-        </label>
-        <div class="settings-actions">
-          <button type="submit" class="big-cta">保存号池策略</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="panel">
-      <details class="advanced-block">
-        <summary>高级设置（仅在需要时修改）</summary>
-        <form method="post" action="/settings/plugin" class="settings-form advanced-form">
+    <section class="panel" id="sec-advanced" data-accord>
+      <div class="accord-header">
+        <h2 class="accord-toggle closed">高级设置（仅在需要时修改）</h2>
+        <span class="accord-hint">收起/展开</span>
+      </div>
+      <div class="accord-body" style="display:none;">
+        <form data-async action="/settings/plugin" method="post" class="settings-form">
           <label>Auth 目录
             <input type="text" name="auth_dir" value="{{ settings.auth_dir }}" />
           </label>
@@ -124,9 +139,10 @@
           </label>
           <div class="settings-actions">
             <button type="submit">保存高级设置</button>
+            <span class="status"></span>
           </div>
         </form>
-      </details>
+      </div>
     </section>
 
     <section class="panel">
