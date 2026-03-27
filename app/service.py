@@ -287,7 +287,7 @@ class PoolMaintainerService:
             cooldown_until = None
             in_flight = 0
 
-        available_count = summary.healthy_count + summary.pending_count + in_flight
+        available_count = summary.total_count - summary.dead_count + in_flight
         summary.in_flight_replenish_count = in_flight
         summary.replenish_cooldown_until = cooldown_until.isoformat() if cooldown_until else None
         summary.needs_replenish = (
