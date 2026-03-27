@@ -6,14 +6,14 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from .config import settings
+from .config import RuntimeSettings, settings
 
 
 class CLIProxyClient:
-    def __init__(self) -> None:
-        self.base_url = settings.cliproxy_base_url.rstrip("/")
-        self.management_key = settings.cliproxy_management_key
-        self.timeout = settings.cliproxy_timeout_seconds
+    def __init__(self, runtime: RuntimeSettings) -> None:
+        self.base_url = runtime.cliproxy_base_url.rstrip("/")
+        self.management_key = runtime.cliproxy_management_key
+        self.timeout = runtime.cliproxy_timeout_seconds
 
     def _headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}
@@ -64,3 +64,27 @@ class CLIProxyClient:
     def check_models(self) -> tuple[int, dict[str, Any]]:
         status, data = self._request_json(settings.models_endpoint, managed=False)
         return status, data if isinstance(data, dict) else {"raw": data}
+
+    def post_api_call(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        url = f"{self.base_url}/v0/management/api-call"
+        body = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            url=url,
+            data=body,
+            headers={**self._headers(), "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                text = response.read().decode("utf-8", errors="replace")
+                parsed = json.loads(text) if text else {}
+                return response.status, parsed if isinstance(parsed, dict) else {"raw": parsed}
+        except urllib.error.HTTPError as exc:
+            text = exc.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(text) if text else {}
+            except Exception:
+                parsed = {"raw": text}
+            return exc.code, parsed if isinstance(parsed, dict) else {"raw": parsed}
+        except Exception as exc:
+            return 0, {"error": str(exc)}

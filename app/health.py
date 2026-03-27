@@ -115,3 +115,48 @@ def evaluate_auth_file(
             "has_refresh_token": bool(payload.get("refresh_token")),
         },
     )
+
+
+def apply_probe_result(record: AuthRecord, probe_status: int, probe_payload: dict[str, Any]) -> AuthRecord:
+    status_code = probe_payload.get("status_code", probe_status)
+    body_text = str(probe_payload.get("body") or probe_payload.get("raw") or "")
+    error_text = str(probe_payload.get("error") or probe_payload.get("message") or "")
+
+    record.metadata["probe_status_code"] = status_code
+    record.metadata["probe_error"] = error_text
+
+    if probe_status == 200 and isinstance(status_code, int) and 200 <= status_code < 300:
+        record.healthy = True
+        record.status = "healthy"
+        record.reason = "live probe ok"
+        record.consecutive_failures = 0
+        lowered = body_text.lower()
+        if "limit_reached" in lowered and "true" in lowered:
+            record.healthy = False
+            record.status = "degraded"
+            record.reason = "rate limit reached"
+        elif "refresh_token_reused" in lowered:
+            record.healthy = False
+            record.status = "dead"
+            record.reason = "refresh token reused"
+        elif "unauthorized" in lowered:
+            record.healthy = False
+            record.status = "dead"
+            record.reason = "probe unauthorized"
+        return record
+
+    record.healthy = False
+    record.consecutive_failures += 1
+    if isinstance(status_code, int) and status_code == 401:
+        record.status = "dead"
+        record.reason = "probe unauthorized"
+    elif isinstance(status_code, int) and status_code in {403, 429}:
+        record.status = "degraded"
+        record.reason = f"probe limited ({status_code})"
+    elif error_text:
+        record.status = "degraded"
+        record.reason = f"probe failed: {error_text[:120]}"
+    else:
+        record.status = "degraded"
+        record.reason = f"probe failed ({status_code})"
+    return record

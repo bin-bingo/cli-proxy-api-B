@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict
+import contextlib
 from pathlib import Path
 from typing import Any
 
 from .cliproxy import CLIProxyClient
-from .config import settings
-from .health import evaluate_auth_file
+from .config import (
+    RuntimeSettings,
+    load_runtime_settings,
+    save_runtime_settings,
+    settings,
+)
+from .health import apply_probe_result, evaluate_auth_file
 from .models import AuthRecord, PoolState, PoolSummary, utc_now
 from .replenisher import run_replenish
 from .storage import append_jsonl, read_json, read_jsonl_tail, write_json
@@ -15,10 +20,14 @@ from .storage import append_jsonl, read_json, read_jsonl_tail, write_json
 
 class PoolMaintainerService:
     def __init__(self) -> None:
-        self.client = CLIProxyClient()
+        self.runtime_settings = load_runtime_settings()
+        self.client = CLIProxyClient(self.runtime_settings)
         self._lock = asyncio.Lock()
         self._background_task: asyncio.Task | None = None
         self.state = self._load_state()
+
+    def _refresh_client(self) -> None:
+        self.client = CLIProxyClient(self.runtime_settings)
 
     def _load_state(self) -> PoolState:
         raw = read_json(settings.state_file, {})
@@ -51,19 +60,31 @@ class PoolMaintainerService:
 
     def settings_snapshot(self) -> dict[str, Any]:
         return {
-            "cliproxy_base_url": settings.cliproxy_base_url,
-            "auth_dir": str(settings.auth_dir),
+            "cliproxy_base_url": self.runtime_settings.cliproxy_base_url,
+            "auth_dir": self.runtime_settings.auth_dir,
             "scan_interval_seconds": settings.scan_interval_seconds,
-            "min_healthy_count": settings.min_healthy_count,
-            "target_healthy_count": settings.target_healthy_count,
-            "usage_exhaust_threshold": settings.usage_exhaust_threshold,
-            "auto_scan_enabled": settings.auto_scan_enabled,
-            "auto_replenish_enabled": settings.auto_replenish_enabled,
-            "replenish_command_configured": bool(settings.replenish_command.strip()),
+            "min_healthy_count": self.runtime_settings.min_healthy_count,
+            "target_healthy_count": self.runtime_settings.target_healthy_count,
+            "usage_exhaust_threshold": self.runtime_settings.usage_exhaust_threshold,
+            "auto_scan_enabled": self.runtime_settings.auto_scan_enabled,
+            "auto_replenish_enabled": self.runtime_settings.auto_replenish_enabled,
+            "replenish_command_configured": bool(
+                self.runtime_settings.replenish_command.strip()
+            ),
+            "cliproxy_management_key_configured": bool(
+                self.runtime_settings.cliproxy_management_key.strip()
+            ),
+            "registration_key_configured": bool(
+                self.runtime_settings.registration_key.strip()
+            ),
+            "registration_base_url": self.runtime_settings.registration_base_url,
+            "registration_cpa_token_configured": bool(
+                self.runtime_settings.registration_cpa_token.strip()
+            ),
         }
 
     async def startup(self) -> None:
-        if settings.auto_scan_enabled:
+        if self.runtime_settings.auto_scan_enabled:
             self._background_task = asyncio.create_task(self._scan_loop())
 
     async def shutdown(self) -> None:
@@ -79,6 +100,96 @@ class PoolMaintainerService:
             except Exception:
                 pass
             await asyncio.sleep(settings.scan_interval_seconds)
+
+    @staticmethod
+    def _as_str(value: Any, default: str) -> str:
+        if value is None:
+            return default
+        return str(value)
+
+    @staticmethod
+    def _as_int(value: Any, default: int) -> int:
+        if value is None:
+            return default
+        return int(value)
+
+    @staticmethod
+    def _as_float(value: Any, default: float) -> float:
+        if value is None:
+            return default
+        return float(value)
+
+    async def update_runtime_settings(self, updates: dict[str, Any]) -> RuntimeSettings:
+        async with self._lock:
+            merged = self.runtime_settings.to_dict()
+            for key, value in updates.items():
+                if key not in RuntimeSettings.__dataclass_fields__:
+                    continue
+                merged[key] = value
+
+            runtime = RuntimeSettings(
+                cliproxy_base_url=self._as_str(
+                    merged.get("cliproxy_base_url"),
+                    self.runtime_settings.cliproxy_base_url,
+                ),
+                cliproxy_management_key=self._as_str(
+                    merged.get("cliproxy_management_key"),
+                    self.runtime_settings.cliproxy_management_key,
+                ),
+                cliproxy_timeout_seconds=self._as_int(
+                    merged.get("cliproxy_timeout_seconds"),
+                    self.runtime_settings.cliproxy_timeout_seconds,
+                ),
+                auth_dir=self._as_str(
+                    merged.get("auth_dir"),
+                    self.runtime_settings.auth_dir,
+                ),
+                min_healthy_count=self._as_int(
+                    merged.get("min_healthy_count"),
+                    self.runtime_settings.min_healthy_count,
+                ),
+                target_healthy_count=self._as_int(
+                    merged.get("target_healthy_count"),
+                    self.runtime_settings.target_healthy_count,
+                ),
+                usage_exhaust_threshold=self._as_float(
+                    merged.get("usage_exhaust_threshold"),
+                    self.runtime_settings.usage_exhaust_threshold,
+                ),
+                auto_scan_enabled=bool(
+                    merged.get(
+                        "auto_scan_enabled", self.runtime_settings.auto_scan_enabled
+                    )
+                ),
+                auto_replenish_enabled=bool(
+                    merged.get(
+                        "auto_replenish_enabled",
+                        self.runtime_settings.auto_replenish_enabled,
+                    )
+                ),
+                replenish_command=self._as_str(
+                    merged.get("replenish_command"),
+                    self.runtime_settings.replenish_command,
+                ),
+                registration_key=self._as_str(
+                    merged.get("registration_key"),
+                    self.runtime_settings.registration_key,
+                ),
+                registration_base_url=self._as_str(
+                    merged.get("registration_base_url"),
+                    self.runtime_settings.registration_base_url,
+                ),
+                registration_cpa_token=self._as_str(
+                    merged.get("registration_cpa_token"),
+                    self.runtime_settings.registration_cpa_token,
+                ),
+            )
+            self.runtime_settings = runtime
+            save_runtime_settings(runtime)
+            self._refresh_client()
+            self.state.settings_snapshot = self.settings_snapshot()
+            self._save_state()
+            return runtime
 
     def _previous_failure_map(self) -> dict[str, int]:
         return {
@@ -113,10 +224,23 @@ class PoolMaintainerService:
             }
 
             records: list[AuthRecord] = []
-            for path in sorted(settings.auth_dir.glob("*.json")):
+            auth_dir = Path(self.runtime_settings.auth_dir)
+            for path in sorted(auth_dir.glob("*.json")):
                 record = evaluate_auth_file(
                     path, global_signals, previous_failures=previous.get(path.name, 0)
                 )
+                probe_payload = {
+                    "authIndex": path.name,
+                    "method": "GET",
+                    "url": "https://chatgpt.com/backend-api/me",
+                    "header": {
+                        "Accept": "application/json",
+                        "User-Agent": "Mozilla/5.0",
+                    },
+                }
+                probe_status, probe_result = self.client.post_api_call(probe_payload)
+                if probe_status > 0:
+                    record = apply_probe_result(record, probe_status, probe_result)
                 records.append(record)
 
             summary = PoolSummary(
@@ -127,9 +251,14 @@ class PoolMaintainerService:
                 unknown_count=sum(1 for item in records if item.status == "unknown"),
                 last_scan_at=utc_now().isoformat(),
             )
-            summary.needs_replenish = summary.healthy_count < settings.min_healthy_count
+            summary.needs_replenish = (
+                summary.healthy_count < self.runtime_settings.min_healthy_count
+            )
             summary.replenish_count = (
-                max(0, settings.target_healthy_count - summary.healthy_count)
+                max(
+                    0,
+                    self.runtime_settings.target_healthy_count - summary.healthy_count,
+                )
                 if summary.needs_replenish
                 else 0
             )
@@ -151,8 +280,13 @@ class PoolMaintainerService:
                 },
             )
 
-            if settings.auto_replenish_enabled and summary.replenish_count > 0:
-                replenish = run_replenish(summary.replenish_count)
+            if (
+                self.runtime_settings.auto_replenish_enabled
+                and summary.replenish_count > 0
+            ):
+                replenish = run_replenish(
+                    summary.replenish_count, self.runtime_settings
+                )
                 self.state.summary.last_replenish_at = replenish.executed_at
                 self.state.summary.last_replenish_result = replenish.message
                 self._record_history("replenish", replenish.to_dict())
@@ -166,10 +300,12 @@ class PoolMaintainerService:
                 count
                 if count is not None
                 else max(
-                    0, settings.target_healthy_count - self.state.summary.healthy_count
+                    0,
+                    self.runtime_settings.target_healthy_count
+                    - self.state.summary.healthy_count,
                 )
             )
-            result = run_replenish(desired)
+            result = run_replenish(desired, self.runtime_settings)
             self.state.summary.last_replenish_at = result.executed_at
             self.state.summary.last_replenish_result = result.message
             self._record_history("replenish", result.to_dict())
@@ -181,9 +317,6 @@ class PoolMaintainerService:
 
     def get_history(self, limit: int = 50) -> list[dict[str, Any]]:
         return read_jsonl_tail(settings.history_file, limit=limit)
-
-
-import contextlib
 
 
 service = PoolMaintainerService()
