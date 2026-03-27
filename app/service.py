@@ -71,6 +71,7 @@ class PoolMaintainerService:
             "usage_exhaust_threshold": self.runtime_settings.usage_exhaust_threshold,
             "auto_scan_enabled": self.runtime_settings.auto_scan_enabled,
             "auto_replenish_enabled": self.runtime_settings.auto_replenish_enabled,
+            "auto_cleanup_enabled": self.runtime_settings.auto_cleanup_enabled,
             "replenish_command_configured": bool(
                 self.runtime_settings.replenish_command.strip()
             ),
@@ -171,6 +172,12 @@ class PoolMaintainerService:
                         self.runtime_settings.auto_replenish_enabled,
                     )
                 ),
+                auto_cleanup_enabled=bool(
+                    merged.get(
+                        "auto_cleanup_enabled",
+                        self.runtime_settings.auto_cleanup_enabled,
+                    )
+                ),
                 replenish_command=self._as_str(
                     merged.get("replenish_command"),
                     self.runtime_settings.replenish_command,
@@ -267,9 +274,18 @@ class PoolMaintainerService:
         unknown_count = sum(1 for item in records if item.status == "unknown")
 
         previous_total = self.state.summary.total_count if self.state.summary else 0
+        cleanup_removed = 0
+        if self.runtime_settings.auto_cleanup_enabled:
+            dead_names = [item.name for item in records if item.status == "dead"]
+            for dead_name in dead_names:
+                status_code, payload = self.client.delete_auth_file(dead_name)
+                if 200 <= status_code < 300:
+                    cleanup_removed += 1
+            if cleanup_removed:
+                records = [item for item in records if item.status != "dead"]
         current_total = len(records)
         added_count = max(0, current_total - previous_total)
-        removed_count = max(0, previous_total - current_total)
+        removed_count = cleanup_removed if self.runtime_settings.auto_cleanup_enabled else 0
 
         summary = PoolSummary(
             total_count=current_total,
@@ -280,7 +296,7 @@ class PoolMaintainerService:
             unknown_count=unknown_count,
             added_count=added_count,
             removed_count=removed_count,
-            cleanup_mode="未启用自动清除",
+            cleanup_mode="已启用，仅清除明确失效账号" if self.runtime_settings.auto_cleanup_enabled else "未启用自动清除",
             last_scan_at=utc_now().isoformat(),
         )
         cooldown_until = None
@@ -335,14 +351,16 @@ class PoolMaintainerService:
                 cooldown_until = datetime.now(timezone.utc) + timedelta(minutes=10)
                 self.state.summary.in_flight_replenish_count = summary.replenish_count
                 self.state.summary.replenish_cooldown_until = cooldown_until.isoformat()
+            else:
+                self.state.summary.in_flight_replenish_count = 0
+                self.state.summary.replenish_cooldown_until = None
             self._record_history("replenish", replenish.to_dict())
 
         self._save_state()
         return self.state
 
     async def run_scan(self, trigger: str = "manual") -> PoolState:
-        async with self._lock:
-            return await asyncio.to_thread(self.scan_once_sync, trigger)
+        return await asyncio.to_thread(self.scan_once_sync, trigger)
 
     async def run_manual_replenish(self, count: int | None = None) -> dict[str, Any]:
         async with self._lock:
@@ -362,6 +380,9 @@ class PoolMaintainerService:
                 cooldown_until = datetime.now(timezone.utc) + timedelta(minutes=10)
                 self.state.summary.in_flight_replenish_count = desired
                 self.state.summary.replenish_cooldown_until = cooldown_until.isoformat()
+            else:
+                self.state.summary.in_flight_replenish_count = 0
+                self.state.summary.replenish_cooldown_until = None
             self._record_history("replenish", result.to_dict())
             self._save_state()
             return result.to_dict()

@@ -94,6 +94,11 @@ class RuntimeSettings:
     replenish_command: str = settings.replenish_command
     registration_key: str = os.environ.get("REGISTRATION_KEY", "")
     registration_base_url: str = os.environ.get("REGISTRATION_BASE_URL", "")
+    replenish_mode: str = os.environ.get("POOL_REPLENISH_MODE", "parallel")
+    replenish_concurrency: int = int(os.environ.get("POOL_REPLENISH_CONCURRENCY", "2"))
+    replenish_email_type: str = os.environ.get("POOL_REPLENISH_EMAIL_TYPE", "tempmail")
+    replenish_auto_cpa: bool = os.environ.get("POOL_REPLENISH_AUTO_CPA", "true").strip().lower() in {"1", "true", "yes", "on"}
+    auto_cleanup_enabled: bool = os.environ.get("POOL_AUTO_CLEANUP_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

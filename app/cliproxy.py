@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -63,6 +64,25 @@ class CLIProxyClient:
     def check_models(self) -> tuple[int, dict[str, Any]]:
         status, data = self._request_json(settings.models_endpoint, managed=False)
         return status, data if isinstance(data, dict) else {"raw": data}
+
+    def delete_auth_file(self, name: str) -> tuple[int, dict[str, Any]]:
+        encoded = urllib.parse.quote(name, safe="")
+        url = f"{self.base_url}/v0/management/auth-files?name={encoded}"
+        request = urllib.request.Request(url=url, headers=self._headers(), method="DELETE")
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                text = response.read().decode("utf-8", errors="replace")
+                parsed = json.loads(text) if text else {}
+                return response.status, parsed if isinstance(parsed, dict) else {"raw": parsed}
+        except urllib.error.HTTPError as exc:
+            text = exc.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(text) if text else {}
+            except Exception:
+                parsed = {"raw": text}
+            return exc.code, parsed if isinstance(parsed, dict) else {"raw": parsed}
+        except Exception as exc:
+            return 0, {"error": str(exc)}
 
     def post_api_call(
         self, payload: dict[str, Any], timeout: int | None = None

@@ -28,8 +28,23 @@ class ReplenishResult:
         }
 
 
+def _build_replenish_command(count: int, runtime: RuntimeSettings) -> str:
+    base_url = runtime.registration_base_url.rstrip("/")
+    if not base_url:
+        return ""
+    payload = {
+        "count": count,
+        "email_service_type": runtime.replenish_email_type,
+        "auto_upload_cpa": runtime.replenish_auto_cpa,
+        "mode": runtime.replenish_mode,
+        "concurrency": runtime.replenish_concurrency,
+    }
+    import json as _json
+    body = _json.dumps(payload, ensure_ascii=False)
+    return f"curl -s -X POST {base_url}/api/registration/batch -H 'Content-Type: application/json' -d '{body}'"
+
+
 def run_replenish(count: int, runtime: RuntimeSettings) -> ReplenishResult:
-    command_template = runtime.replenish_command.strip()
     if count <= 0:
         return ReplenishResult(
             False,
@@ -38,16 +53,17 @@ def run_replenish(count: int, runtime: RuntimeSettings) -> ReplenishResult:
             count=0,
             executed_at=utc_now().isoformat(),
         )
-    if not command_template:
+
+    command = _build_replenish_command(count, runtime)
+
+    if not command:
         return ReplenishResult(
             False,
             False,
-            "POOL_REPLENISH_COMMAND is not configured",
+            "Registration base URL is not configured",
             count=count,
             executed_at=utc_now().isoformat(),
         )
-
-    command = command_template.replace(settings.replenish_count_placeholder, str(count))
     env = os.environ.copy()
     env.setdefault("POOL_REQUESTED_COUNT", str(count))
     if runtime.registration_key:

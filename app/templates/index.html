@@ -174,6 +174,9 @@
           <label>补池命令
             <input type="text" name="replenish_command" value="{{ status.settings_snapshot.replenish_command if status.settings_snapshot.replenish_command is defined else '' }}" />
           </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="auto_cleanup_enabled" {% if status.settings_snapshot.auto_cleanup_enabled %}checked{% endif %} /> 自动清除失效账号（仅 dead）
+          </label>
           <div class="settings-actions">
             <button type="submit">保存高级设置</button>
             <span class="status"></span>
