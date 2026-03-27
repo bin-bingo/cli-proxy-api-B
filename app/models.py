@@ -40,6 +40,7 @@ class AuthRecord:
 class PoolSummary:
     total_count: int = 0
     healthy_count: int = 0
+    pending_count: int = 0
     degraded_count: int = 0
     dead_count: int = 0
     unknown_count: int = 0

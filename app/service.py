@@ -80,6 +80,10 @@ class PoolMaintainerService:
                 self.runtime_settings.registration_key.strip()
             ),
             "registration_base_url": self.runtime_settings.registration_base_url,
+            "replenish_mode": self.runtime_settings.replenish_mode,
+            "replenish_concurrency": self.runtime_settings.replenish_concurrency,
+            "replenish_email_type": self.runtime_settings.replenish_email_type,
+            "replenish_auto_cpa": self.runtime_settings.replenish_auto_cpa,
         }
 
     async def startup(self) -> None:
@@ -255,19 +259,27 @@ class PoolMaintainerService:
             results = list(executor.map(probe_item, base_records))
         records = results
 
+        healthy_count = sum(1 for item in records if item.status == "healthy")
+        pending_count = sum(1 for item in records if item.status == "pending")
+        degraded_count = sum(1 for item in records if item.status == "degraded")
+        dead_count = sum(1 for item in records if item.status == "dead")
+        unknown_count = sum(1 for item in records if item.status == "unknown")
+
         summary = PoolSummary(
             total_count=len(records),
-            healthy_count=sum(1 for item in records if item.status == "healthy"),
-            degraded_count=sum(1 for item in records if item.status == "degraded"),
-            dead_count=sum(1 for item in records if item.status == "dead"),
-            unknown_count=sum(1 for item in records if item.status == "unknown"),
+            healthy_count=healthy_count,
+            pending_count=pending_count,
+            degraded_count=degraded_count,
+            dead_count=dead_count,
+            unknown_count=unknown_count,
             last_scan_at=utc_now().isoformat(),
         )
+        available_count = summary.healthy_count + summary.pending_count
         summary.needs_replenish = (
-            summary.healthy_count < self.runtime_settings.min_healthy_count
+            available_count < self.runtime_settings.min_healthy_count
         )
         summary.replenish_count = (
-            max(0, self.runtime_settings.target_healthy_count - summary.healthy_count)
+            max(0, self.runtime_settings.target_healthy_count - available_count)
             if summary.needs_replenish
             else 0
         )

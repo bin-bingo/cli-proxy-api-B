@@ -155,11 +155,11 @@ def apply_probe_result(record: AuthRecord, probe_status: int, probe_payload: dic
         record.reason = f"probe limited ({status_code})"
     elif probe_status == 0:
         record.healthy = False
-        record.status = "degraded"
+        record.status = "pending"
         record.reason = "probe timeout/failed"
     elif error_text:
         record.healthy = False
-        record.status = "degraded"
+        record.status = "pending"
         record.reason = f"probe failed: {error_text[:120]}"
     else:
         record.healthy = False

@@ -30,7 +30,7 @@
     <section class="cards">
       <article class="card"><h2>总库存</h2><div class="metric">{{ status.summary.total_count }}</div></article>
       <article class="card ok"><h2>健康</h2><div class="metric">{{ status.summary.healthy_count }}</div></article>
-      <article class="card warn"><h2>降级</h2><div class="metric">{{ status.summary.degraded_count }}</div></article>
+      <article class="card warn"><h2>待确认</h2><div class="metric">{{ status.summary.pending_count }}</div></article>
       <article class="card bad"><h2>死亡</h2><div class="metric">{{ status.summary.dead_count }}</div></article>
     </section>
 
@@ -40,6 +40,7 @@
         <ul class="kv">
           <li><span>最近扫描</span><strong>{{ status.summary.last_scan_at or '-' }}</strong></li>
           <li><span>需要补池</span><strong>{{ '是' if status.summary.needs_replenish else '否' }}</strong></li>
+          <li><span>可用库存（健康+待确认）</span><strong>{{ status.summary.healthy_count + status.summary.pending_count }}</strong></li>
           <li><span>建议补量</span><strong>{{ status.summary.replenish_count }}</strong></li>
           <li><span>最近补池</span><strong>{{ status.summary.last_replenish_at or '-' }}</strong></li>
           <li><span>补池结果</span><strong>{{ status.summary.last_replenish_result or '-' }}</strong></li>
@@ -109,6 +110,28 @@
           </label>
           <label class="checkbox-row">
             <input type="checkbox" name="auto_replenish_enabled" {% if settings.auto_replenish_enabled %}checked{% endif %} /> 自动补池
+          </label>
+          <label>补池模式
+            <select name="replenish_mode">
+              <option value="parallel" {% if status.settings_snapshot.replenish_mode == 'parallel' %}selected{% endif %}>并行</option>
+              <option value="pipeline" {% if status.settings_snapshot.replenish_mode == 'pipeline' %}selected{% endif %}>流水线</option>
+            </select>
+          </label>
+          <label>补池并发数
+            <input type="number" name="replenish_concurrency" min="1" max="10" value="{{ status.settings_snapshot.replenish_concurrency if status.settings_snapshot.replenish_concurrency is defined else 2 }}" />
+          </label>
+          <label>邮箱服务
+            <select name="replenish_email_type">
+              <option value="tempmail" {% if status.settings_snapshot.replenish_email_type == 'tempmail' %}selected{% endif %}>临时邮箱</option>
+              <option value="moe_mail" {% if status.settings_snapshot.replenish_email_type == 'moe_mail' %}selected{% endif %}>自定义域名邮箱</option>
+              <option value="duck_mail" {% if status.settings_snapshot.replenish_email_type == 'duck_mail' %}selected{% endif %}>DuckMail</option>
+              <option value="freemail" {% if status.settings_snapshot.replenish_email_type == 'freemail' %}selected{% endif %}>Freemail</option>
+              <option value="outlook" {% if status.settings_snapshot.replenish_email_type == 'outlook' %}selected{% endif %}>Outlook</option>
+              <option value="imap_mail" {% if status.settings_snapshot.replenish_email_type == 'imap_mail' %}selected{% endif %}>IMAP</option>
+            </select>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="replenish_auto_cpa" {% if status.settings_snapshot.replenish_auto_cpa %}checked{% endif %} /> 自动上传 CPA
           </label>
           <div class="settings-actions">
             <button type="submit" class="big-cta">保存号池策略</button>
