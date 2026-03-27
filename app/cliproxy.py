@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import urllib.error
-import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -65,7 +64,9 @@ class CLIProxyClient:
         status, data = self._request_json(settings.models_endpoint, managed=False)
         return status, data if isinstance(data, dict) else {"raw": data}
 
-    def post_api_call(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    def post_api_call(
+        self, payload: dict[str, Any], timeout: int | None = None
+    ) -> tuple[int, dict[str, Any]]:
         url = f"{self.base_url}/v0/management/api-call"
         body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
@@ -75,10 +76,13 @@ class CLIProxyClient:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with urllib.request.urlopen(request, timeout=timeout or self.timeout) as response:
                 text = response.read().decode("utf-8", errors="replace")
                 parsed = json.loads(text) if text else {}
-                return response.status, parsed if isinstance(parsed, dict) else {"raw": parsed}
+                return (
+                    response.status,
+                    parsed if isinstance(parsed, dict) else {"raw": parsed},
+                )
         except urllib.error.HTTPError as exc:
             text = exc.read().decode("utf-8", errors="replace")
             try:

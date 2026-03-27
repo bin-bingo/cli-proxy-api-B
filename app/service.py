@@ -232,9 +232,16 @@ class PoolMaintainerService:
                     "User-Agent": "Mozilla/5.0",
                 },
             }
-            probe_status, probe_result = self.client.post_api_call(probe_payload)
+            probe_status, probe_result = self.client.post_api_call(probe_payload, timeout=3)
             if probe_status > 0:
                 record = apply_probe_result(record, probe_status, probe_result)
+            else:
+                record.metadata["probe_status_code"] = 0
+                record.metadata["probe_error"] = str(probe_result.get("error") or "probe timeout")
+                if record.status == "healthy":
+                    record.status = "degraded"
+                    record.healthy = False
+                    record.reason = "probe timeout"
             records.append(record)
 
         summary = PoolSummary(
