@@ -190,10 +190,30 @@ class PoolMaintainerService:
                     merged.get("registration_base_url"),
                     self.runtime_settings.registration_base_url,
                 ),
+                replenish_mode=self._as_str(
+                    merged.get("replenish_mode"),
+                    self.runtime_settings.replenish_mode,
+                ),
+                replenish_concurrency=self._as_int(
+                    merged.get("replenish_concurrency"),
+                    self.runtime_settings.replenish_concurrency,
+                ),
+                replenish_email_type=self._as_str(
+                    merged.get("replenish_email_type"),
+                    self.runtime_settings.replenish_email_type,
+                ),
+                replenish_auto_cpa=bool(
+                    merged.get(
+                        "replenish_auto_cpa",
+                        self.runtime_settings.replenish_auto_cpa,
+                    )
+                ),
             )
             self.runtime_settings = runtime
             save_runtime_settings(runtime)
             self._refresh_client()
+            if self.state.summary:
+                self.state.summary.cleanup_mode = "已启用，仅清除明确失效账号" if runtime.auto_cleanup_enabled else "未启用自动清除"
             self.state.settings_snapshot = self.settings_snapshot()
             self._save_state()
             return runtime

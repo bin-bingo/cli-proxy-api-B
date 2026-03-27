@@ -118,6 +118,10 @@ async def html_save_plugin_settings(
     auto_scan_enabled: str | None = Form(None),
     auto_replenish_enabled: str | None = Form(None),
     auto_cleanup_enabled: str | None = Form(None),
+    replenish_mode: str | None = Form(None),
+    replenish_concurrency: int | None = Form(None),
+    replenish_email_type: str | None = Form(None),
+    replenish_auto_cpa: str | None = Form(None),
     replenish_command: str | None = Form(None),
 ) -> Response:
     updates: dict[str, object] = {}
@@ -134,6 +138,13 @@ async def html_save_plugin_settings(
     updates["auto_scan_enabled"] = auto_scan_enabled is not None
     updates["auto_replenish_enabled"] = auto_replenish_enabled is not None
     updates["auto_cleanup_enabled"] = auto_cleanup_enabled is not None
+    if replenish_mode is not None:
+        updates["replenish_mode"] = replenish_mode
+    if replenish_concurrency is not None:
+        updates["replenish_concurrency"] = replenish_concurrency
+    if replenish_email_type is not None:
+        updates["replenish_email_type"] = replenish_email_type
+    updates["replenish_auto_cpa"] = replenish_auto_cpa is not None
     if replenish_command is not None:
         updates["replenish_command"] = replenish_command
 
