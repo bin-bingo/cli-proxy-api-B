@@ -11,7 +11,7 @@
     <section class="hero">
       <div>
         <h1>CLIProxyAPI-B Pool Maintainer</h1>
-        <p>以 CPA/CLIProxyAPI 库存为准的号池监控与补池控制台。</p>
+        <p>先连通（CPA/注册机）→ 再定策略（池子阈值）→ 最后执行与观察（扫描/补池/明细）。</p>
       </div>
       <div class="actions">
         <form method="post" action="/scan">
@@ -33,7 +33,7 @@
 
     <section class="grid">
       <article class="panel">
-        <h2>池子状态</h2>
+        <h2>池子概览</h2>
         <ul class="kv">
           <li><span>最近扫描</span><strong>{{ status.summary.last_scan_at or '-' }}</strong></li>
           <li><span>需要补池</span><strong>{{ '是' if status.summary.needs_replenish else '否' }}</strong></li>
@@ -43,16 +43,12 @@
         </ul>
       </article>
       <article class="panel">
-        <h2>当前配置</h2>
+        <h2>连接状态摘要</h2>
         <ul class="kv">
-          <li><span>CLIProxyAPI</span><strong>{{ settings.cliproxy_base_url }}</strong></li>
-          <li><span>Auth 目录</span><strong>{{ settings.auth_dir }}</strong></li>
-          <li><span>CPA Key 已配置</span><strong>{{ '是' if settings.cliproxy_management_key_configured else '否' }}</strong></li>
-          <li><span>注册机 Key 已配置</span><strong>{{ '是' if settings.registration_key_configured else '否' }}</strong></li>
+          <li><span>CPA 地址</span><strong>{{ settings.cliproxy_base_url }}</strong></li>
+          <li><span>CPA 管理 Key</span><strong>{{ '已配置' if settings.cliproxy_management_key_configured else '未配置' }}</strong></li>
           <li><span>注册机地址</span><strong>{{ settings.registration_base_url or '-' }}</strong></li>
-          <li><span>注册机 CPA Token 已配置</span><strong>{{ '是' if settings.registration_cpa_token_configured else '否' }}</strong></li>
-          <li><span>最低健康库存</span><strong>{{ settings.min_healthy_count }}</strong></li>
-          <li><span>目标健康库存</span><strong>{{ settings.target_healthy_count }}</strong></li>
+          <li><span>注册机 Key</span><strong>{{ '已配置' if settings.registration_key_configured else '未配置' }}</strong></li>
           <li><span>自动扫描</span><strong>{{ '开' if settings.auto_scan_enabled else '关' }}</strong></li>
           <li><span>自动补池</span><strong>{{ '开' if settings.auto_replenish_enabled else '关' }}</strong></li>
         </ul>
@@ -60,76 +56,43 @@
     </section>
 
     <section class="panel">
-      <h2>运行配置</h2>
-      <form method="post" action="/settings" class="settings-form">
-        <label>CLIProxyAPI 地址
+      <h2>连接与凭证（先配置这一步）</h2>
+      <p class="helper">确保 CPA 与注册机都可连通后，再设置池子策略。</p>
+      <form method="post" action="/settings/account-keys" class="settings-form">
+        <label>CPA 地址
           <input type="text" name="cliproxy_base_url" value="{{ settings.cliproxy_base_url }}" />
         </label>
         <label>CPA 管理 Key
           <input type="password" name="cliproxy_management_key" value="{{ status.settings_snapshot.cliproxy_management_key if status.settings_snapshot.cliproxy_management_key is defined else '' }}" />
         </label>
-        <label>Auth 目录
-          <input type="text" name="auth_dir" value="{{ settings.auth_dir }}" />
+        <label>注册机地址
+          <input type="text" name="registration_base_url" value="{{ status.settings_snapshot.registration_base_url if status.settings_snapshot.registration_base_url is defined else '' }}" />
         </label>
-        <label>CLIProxy 超时秒数
-          <input type="number" name="cliproxy_timeout_seconds" min="1" value="{{ status.settings_snapshot.cliproxy_timeout_seconds if status.settings_snapshot.cliproxy_timeout_seconds is defined else 20 }}" />
-        </label>
-        <label>最低健康库存
-          <input type="number" name="min_healthy_count" min="0" value="{{ settings.min_healthy_count }}" />
-        </label>
-        <label>目标健康库存
-          <input type="number" name="target_healthy_count" min="0" value="{{ settings.target_healthy_count }}" />
-        </label>
-        <label>用量阈值(%)
-          <input type="number" step="0.1" name="usage_exhaust_threshold" min="0" value="{{ settings.usage_exhaust_threshold }}" />
-        </label>
-        <label>补池命令
-          <input type="text" name="replenish_command" value="{{ status.settings_snapshot.replenish_command if status.settings_snapshot.replenish_command is defined else '' }}" />
-        </label>
-        <label class="checkbox-row">
-          <input type="checkbox" name="auto_scan_enabled" {% if settings.auto_scan_enabled %}checked{% endif %} /> 自动扫描
-        </label>
-        <label class="checkbox-row">
-          <input type="checkbox" name="auto_replenish_enabled" {% if settings.auto_replenish_enabled %}checked{% endif %} /> 自动补池
-        </label>
-        <div class="settings-actions">
-          <button type="submit">保存配置</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="panel">
-      <h2>注册机配置</h2>
-      <form method="post" action="/settings" class="settings-form">
         <label>注册机 Key
           <input type="password" name="registration_key" value="{{ status.settings_snapshot.registration_key if status.settings_snapshot.registration_key is defined else '' }}" />
         </label>
-        <label>注册机地址（可选）
-          <input type="text" name="registration_base_url" value="{{ status.settings_snapshot.registration_base_url if status.settings_snapshot.registration_base_url is defined else '' }}" />
-        </label>
-        <label>注册机使用的 CPA Token（可选）
-          <input type="password" name="registration_cpa_token" value="{{ status.settings_snapshot.registration_cpa_token if status.settings_snapshot.registration_cpa_token is defined else '' }}" />
-        </label>
-        <label>补池命令
-          <input type="text" name="replenish_command" value="{{ status.settings_snapshot.replenish_command if status.settings_snapshot.replenish_command is defined else '' }}" />
-        </label>
-        <label>CLIProxyAPI 地址
-          <input type="text" name="cliproxy_base_url" value="{{ settings.cliproxy_base_url }}" />
-        </label>
-        <label>Auth 目录
-          <input type="text" name="auth_dir" value="{{ settings.auth_dir }}" />
-        </label>
-        <label>CLIProxy 超时秒数
-          <input type="number" name="cliproxy_timeout_seconds" min="1" value="{{ status.settings_snapshot.cliproxy_timeout_seconds if status.settings_snapshot.cliproxy_timeout_seconds is defined else 20 }}" />
-        </label>
+        <div class="settings-actions">
+          <button type="submit">保存连接与凭证</button>
+        </div>
+      </form>
+      <div class="test-action-row">
+        <form method="post" action="/test/cpa">
+          <button type="submit">测试 CPA 连接</button>
+        </form>
+        <form method="post" action="/test/registration">
+          <button type="submit">测试注册机连接</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>号池策略（常用）</h2>
+      <form method="post" action="/settings/plugin" class="settings-form">
         <label>最低健康库存
           <input type="number" name="min_healthy_count" min="0" value="{{ settings.min_healthy_count }}" />
         </label>
         <label>目标健康库存
           <input type="number" name="target_healthy_count" min="0" value="{{ settings.target_healthy_count }}" />
-        </label>
-        <label>用量阈值(%)
-          <input type="number" step="0.1" name="usage_exhaust_threshold" min="0" value="{{ settings.usage_exhaust_threshold }}" />
         </label>
         <label class="checkbox-row">
           <input type="checkbox" name="auto_scan_enabled" {% if settings.auto_scan_enabled %}checked{% endif %} /> 自动扫描
@@ -138,13 +101,36 @@
           <input type="checkbox" name="auto_replenish_enabled" {% if settings.auto_replenish_enabled %}checked{% endif %} /> 自动补池
         </label>
         <div class="settings-actions">
-          <button type="submit" class="big-cta">保存注册机配置</button>
+          <button type="submit" class="big-cta">保存号池策略</button>
         </div>
       </form>
     </section>
 
     <section class="panel">
-      <h2>账号记录</h2>
+      <details class="advanced-block">
+        <summary>高级设置（仅在需要时修改）</summary>
+        <form method="post" action="/settings/plugin" class="settings-form advanced-form">
+          <label>Auth 目录
+            <input type="text" name="auth_dir" value="{{ settings.auth_dir }}" />
+          </label>
+          <label>CLIProxy 超时秒数
+            <input type="number" name="cliproxy_timeout_seconds" min="1" value="{{ status.settings_snapshot.cliproxy_timeout_seconds if status.settings_snapshot.cliproxy_timeout_seconds is defined else 20 }}" />
+          </label>
+          <label>用量阈值(%)
+            <input type="number" step="0.1" name="usage_exhaust_threshold" min="0" value="{{ settings.usage_exhaust_threshold }}" />
+          </label>
+          <label>补池命令
+            <input type="text" name="replenish_command" value="{{ status.settings_snapshot.replenish_command if status.settings_snapshot.replenish_command is defined else '' }}" />
+          </label>
+          <div class="settings-actions">
+            <button type="submit">保存高级设置</button>
+          </div>
+        </form>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h2>账号明细</h2>
       <table>
         <thead>
           <tr>

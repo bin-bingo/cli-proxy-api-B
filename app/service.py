@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -78,9 +80,6 @@ class PoolMaintainerService:
                 self.runtime_settings.registration_key.strip()
             ),
             "registration_base_url": self.runtime_settings.registration_base_url,
-            "registration_cpa_token_configured": bool(
-                self.runtime_settings.registration_cpa_token.strip()
-            ),
         }
 
     async def startup(self) -> None:
@@ -96,7 +95,7 @@ class PoolMaintainerService:
     async def _scan_loop(self) -> None:
         while True:
             try:
-                await self.run_scan(trigger="auto")
+                await asyncio.to_thread(self.scan_once_sync, "auto")
             except Exception:
                 pass
             await asyncio.sleep(settings.scan_interval_seconds)
@@ -179,10 +178,6 @@ class PoolMaintainerService:
                     merged.get("registration_base_url"),
                     self.runtime_settings.registration_base_url,
                 ),
-                registration_cpa_token=self._as_str(
-                    merged.get("registration_cpa_token"),
-                    self.runtime_settings.registration_cpa_token,
-                ),
             )
             self.runtime_settings = runtime
             save_runtime_settings(runtime)
@@ -205,94 +200,89 @@ class PoolMaintainerService:
         self.state.settings_snapshot = self.settings_snapshot()
         write_json(settings.state_file, self.state.to_dict())
 
+    def scan_once_sync(self, trigger: str = "manual") -> PoolState:
+        auth_files_status, auth_files_remote = self.client.list_auth_files()
+        auth_status_code, auth_status = self.client.get_auth_status()
+        usage_code, usage = self.client.get_usage()
+        models_code, _models = self.client.check_models()
+
+        previous = self._previous_failure_map()
+        global_signals = {
+            "auth_status_ok": 200 <= auth_status_code < 300,
+            "usage_ok": 200 <= usage_code < 300,
+            "proxy_ok": 200 <= models_code < 300,
+            "remote_auth_files_status": auth_files_status,
+            "remote_auth_files_count": len(auth_files_remote),
+            "auth_status": auth_status,
+            "usage": usage,
+        }
+
+        records: list[AuthRecord] = []
+        auth_dir = Path(self.runtime_settings.auth_dir)
+        for path in sorted(auth_dir.glob("*.json")):
+            record = evaluate_auth_file(
+                path, global_signals, previous_failures=previous.get(path.name, 0)
+            )
+            probe_payload = {
+                "authIndex": path.name,
+                "method": "GET",
+                "url": "https://chatgpt.com/backend-api/me",
+                "header": {
+                    "Accept": "application/json",
+                    "User-Agent": "Mozilla/5.0",
+                },
+            }
+            probe_status, probe_result = self.client.post_api_call(probe_payload)
+            if probe_status > 0:
+                record = apply_probe_result(record, probe_status, probe_result)
+            records.append(record)
+
+        summary = PoolSummary(
+            total_count=len(records),
+            healthy_count=sum(1 for item in records if item.status == "healthy"),
+            degraded_count=sum(1 for item in records if item.status == "degraded"),
+            dead_count=sum(1 for item in records if item.status == "dead"),
+            unknown_count=sum(1 for item in records if item.status == "unknown"),
+            last_scan_at=utc_now().isoformat(),
+        )
+        summary.needs_replenish = (
+            summary.healthy_count < self.runtime_settings.min_healthy_count
+        )
+        summary.replenish_count = (
+            max(0, self.runtime_settings.target_healthy_count - summary.healthy_count)
+            if summary.needs_replenish
+            else 0
+        )
+
+        self.state.auth_records = records
+        self.state.summary = summary
+        self._record_history(
+            "scan",
+            {
+                "trigger": trigger,
+                "summary": summary.to_dict(),
+                "global_signals": {
+                    "auth_status_code": auth_status_code,
+                    "usage_code": usage_code,
+                    "models_code": models_code,
+                    "remote_auth_files_status": auth_files_status,
+                    "remote_auth_files_count": len(auth_files_remote),
+                },
+            },
+        )
+
+        if self.runtime_settings.auto_replenish_enabled and summary.replenish_count > 0:
+            replenish = run_replenish(summary.replenish_count, self.runtime_settings)
+            self.state.summary.last_replenish_at = replenish.executed_at
+            self.state.summary.last_replenish_result = replenish.message
+            self._record_history("replenish", replenish.to_dict())
+
+        self._save_state()
+        return self.state
+
     async def run_scan(self, trigger: str = "manual") -> PoolState:
         async with self._lock:
-            auth_files_status, auth_files_remote = self.client.list_auth_files()
-            auth_status_code, auth_status = self.client.get_auth_status()
-            usage_code, usage = self.client.get_usage()
-            models_code, _models = self.client.check_models()
-
-            previous = self._previous_failure_map()
-            global_signals = {
-                "auth_status_ok": 200 <= auth_status_code < 300,
-                "usage_ok": 200 <= usage_code < 300,
-                "proxy_ok": 200 <= models_code < 300,
-                "remote_auth_files_status": auth_files_status,
-                "remote_auth_files_count": len(auth_files_remote),
-                "auth_status": auth_status,
-                "usage": usage,
-            }
-
-            records: list[AuthRecord] = []
-            auth_dir = Path(self.runtime_settings.auth_dir)
-            for path in sorted(auth_dir.glob("*.json")):
-                record = evaluate_auth_file(
-                    path, global_signals, previous_failures=previous.get(path.name, 0)
-                )
-                probe_payload = {
-                    "authIndex": path.name,
-                    "method": "GET",
-                    "url": "https://chatgpt.com/backend-api/me",
-                    "header": {
-                        "Accept": "application/json",
-                        "User-Agent": "Mozilla/5.0",
-                    },
-                }
-                probe_status, probe_result = self.client.post_api_call(probe_payload)
-                if probe_status > 0:
-                    record = apply_probe_result(record, probe_status, probe_result)
-                records.append(record)
-
-            summary = PoolSummary(
-                total_count=len(records),
-                healthy_count=sum(1 for item in records if item.status == "healthy"),
-                degraded_count=sum(1 for item in records if item.status == "degraded"),
-                dead_count=sum(1 for item in records if item.status == "dead"),
-                unknown_count=sum(1 for item in records if item.status == "unknown"),
-                last_scan_at=utc_now().isoformat(),
-            )
-            summary.needs_replenish = (
-                summary.healthy_count < self.runtime_settings.min_healthy_count
-            )
-            summary.replenish_count = (
-                max(
-                    0,
-                    self.runtime_settings.target_healthy_count - summary.healthy_count,
-                )
-                if summary.needs_replenish
-                else 0
-            )
-
-            self.state.auth_records = records
-            self.state.summary = summary
-            self._record_history(
-                "scan",
-                {
-                    "trigger": trigger,
-                    "summary": summary.to_dict(),
-                    "global_signals": {
-                        "auth_status_code": auth_status_code,
-                        "usage_code": usage_code,
-                        "models_code": models_code,
-                        "remote_auth_files_status": auth_files_status,
-                        "remote_auth_files_count": len(auth_files_remote),
-                    },
-                },
-            )
-
-            if (
-                self.runtime_settings.auto_replenish_enabled
-                and summary.replenish_count > 0
-            ):
-                replenish = run_replenish(
-                    summary.replenish_count, self.runtime_settings
-                )
-                self.state.summary.last_replenish_at = replenish.executed_at
-                self.state.summary.last_replenish_result = replenish.message
-                self._record_history("replenish", replenish.to_dict())
-
-            self._save_state()
-            return self.state
+            return await asyncio.to_thread(self.scan_once_sync, trigger)
 
     async def run_manual_replenish(self, count: int | None = None) -> dict[str, Any]:
         async with self._lock:
@@ -317,6 +307,74 @@ class PoolMaintainerService:
 
     def get_history(self, limit: int = 50) -> list[dict[str, Any]]:
         return read_jsonl_tail(settings.history_file, limit=limit)
+
+    def test_cpa_connection(self) -> dict[str, Any]:
+        status_code, payload = self.client.list_auth_files()
+        ok = 200 <= status_code < 300
+        result = {
+            "target": "cpa",
+            "ok": ok,
+            "status_code": status_code,
+            "message": "CPA connection ok" if ok else "CPA connection failed",
+            "details": {
+                "base_url": self.runtime_settings.cliproxy_base_url,
+                "auth_files_count": len(payload),
+            },
+            "checked_at": utc_now().isoformat(),
+        }
+        self._record_history("connection_test", result)
+        self._save_state()
+        return result
+
+    def test_registration_connection(self) -> dict[str, Any]:
+        base_url = self.runtime_settings.registration_base_url.strip().rstrip("/")
+        if not base_url:
+            result = {
+                "target": "registration",
+                "ok": False,
+                "status_code": 0,
+                "message": "Registration base URL is not configured",
+                "details": {},
+                "checked_at": utc_now().isoformat(),
+            }
+            self._record_history("connection_test", result)
+            self._save_state()
+            return result
+
+        url = f"{base_url}/login"
+        request = urllib.request.Request(url=url, headers={"Accept": "text/html"})
+        try:
+            with urllib.request.urlopen(request, timeout=self.runtime_settings.cliproxy_timeout_seconds) as response:
+                result = {
+                    "target": "registration",
+                    "ok": 200 <= response.status < 300,
+                    "status_code": response.status,
+                    "message": "Registration connection ok" if 200 <= response.status < 300 else "Registration connection returned non-OK status",
+                    "details": {"url": url},
+                    "checked_at": utc_now().isoformat(),
+                }
+        except urllib.error.HTTPError as exc:
+            result = {
+                "target": "registration",
+                "ok": False,
+                "status_code": exc.code,
+                "message": f"Registration connection failed with HTTP {exc.code}",
+                "details": {"url": url},
+                "checked_at": utc_now().isoformat(),
+            }
+        except Exception as exc:
+            result = {
+                "target": "registration",
+                "ok": False,
+                "status_code": 0,
+                "message": f"Registration connection error: {exc}",
+                "details": {"url": url},
+                "checked_at": utc_now().isoformat(),
+            }
+
+        self._record_history("connection_test", result)
+        self._save_state()
+        return result
 
 
 service = PoolMaintainerService()

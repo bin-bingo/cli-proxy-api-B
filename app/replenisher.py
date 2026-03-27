@@ -56,8 +56,6 @@ def run_replenish(count: int, runtime: RuntimeSettings) -> ReplenishResult:
         env.setdefault("CLIPROXY_MANAGEMENT_KEY", runtime.cliproxy_management_key)
     if runtime.registration_base_url:
         env["REGISTRATION_BASE_URL"] = runtime.registration_base_url
-    if runtime.registration_cpa_token:
-        env["CPA_TOKEN"] = runtime.registration_cpa_token
 
     try:
         completed = subprocess.run(

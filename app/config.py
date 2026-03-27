@@ -94,7 +94,6 @@ class RuntimeSettings:
     replenish_command: str = settings.replenish_command
     registration_key: str = os.environ.get("REGISTRATION_KEY", "")
     registration_base_url: str = os.environ.get("REGISTRATION_BASE_URL", "")
-    registration_cpa_token: str = os.environ.get("CPA_TOKEN", "")
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
