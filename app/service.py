@@ -231,25 +231,44 @@ class PoolMaintainerService:
 
         auth_dir = Path(self.runtime_settings.auth_dir)
         files = sorted(auth_dir.glob("*.json"))
+        remote_by_name = {str(item.get("name") or item.get("id") or ""): item for item in auth_files_remote}
         previous_failures_map = self._previous_failure_map()
         base_records = [
-            (path, evaluate_auth_file(path, global_signals, previous_failures=previous_failures_map.get(path.name, 0)))
+            (
+                path,
+                remote_by_name.get(path.name, {}),
+                evaluate_auth_file(
+                    path,
+                    global_signals,
+                    previous_failures=previous_failures_map.get(path.name, 0),
+                    remote_meta=remote_by_name.get(path.name, {}),
+                ),
+            )
             for path in files
         ]
 
-        def probe_item(item: tuple[Path, AuthRecord]) -> AuthRecord:
-            path, record = item
-            if not self.runtime_settings.cliproxy_management_key:
+        def probe_item(item: tuple[Path, dict[str, Any], AuthRecord]) -> AuthRecord:
+            path, remote_meta, record = item
+            if not self.runtime_settings.cliproxy_management_key or record.status == "dead":
                 return record
+            auth_index = str(remote_meta.get("auth_index") or remote_meta.get("authIndex") or path.name)
+            account_id = None
+            id_token = remote_meta.get("id_token")
+            if isinstance(id_token, dict):
+                account_id = id_token.get("chatgpt_account_id")
+            probe_header = {
+                "Authorization": "Bearer $TOKEN$",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0",
+            }
+            if account_id:
+                probe_header["Chatgpt-Account-Id"] = str(account_id)
             probe_payload = {
-                "authIndex": path.name,
+                "authIndex": auth_index,
                 "method": "GET",
                 "url": "https://chatgpt.com/backend-api/wham/usage",
-                "header": {
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "User-Agent": "Mozilla/5.0",
-                },
+                "header": probe_header,
             }
             probe_status, probe_result = self.client.post_api_call(probe_payload, timeout=4)
             if probe_status > 0:

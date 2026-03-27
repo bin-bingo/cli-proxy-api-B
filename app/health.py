@@ -56,9 +56,13 @@ def _pick_quota_percent(payload: dict[str, Any]) -> float | None:
 
 
 def evaluate_auth_file(
-    path: Path, global_signals: dict[str, Any], previous_failures: int = 0
+    path: Path,
+    global_signals: dict[str, Any],
+    previous_failures: int = 0,
+    remote_meta: dict[str, Any] | None = None,
 ) -> AuthRecord:
     payload = _safe_load_auth(path)
+    remote = remote_meta or {}
     parse_error = payload.get("_parse_error")
     quota_percent = _pick_quota_percent(payload)
     auth_status_ok = bool(global_signals.get("auth_status_ok"))
@@ -78,12 +82,19 @@ def evaluate_auth_file(
         status = "dead"
         healthy = False
         reason = "missing access_token/id_token"
-    elif (
-        quota_percent is not None and quota_percent >= settings.usage_exhaust_threshold
-    ):
-        status = "degraded"
-        healthy = False
-        reason = f"quota threshold reached ({quota_percent:.1f}%)"
+    else:
+        remote_status = str(remote.get("status") or "").strip().lower()
+        remote_unavailable = bool(remote.get("unavailable"))
+        remote_message = str(remote.get("status_message") or "").lower()
+        if remote_status == "error" or remote_unavailable:
+            if any(key in remote_message for key in ("401", "token_revoked", "unauthorized", "refresh_token_reused")):
+                status = "dead"
+                healthy = False
+                reason = "cpa marked invalid"
+        if healthy and quota_percent is not None and quota_percent >= settings.usage_exhaust_threshold:
+            status = "degraded"
+            healthy = False
+            reason = f"quota threshold reached ({quota_percent:.1f}%)"
 
     if healthy:
         failures = 0
@@ -109,6 +120,11 @@ def evaluate_auth_file(
         metadata={
             "has_access_token": bool(payload.get("access_token")),
             "has_refresh_token": bool(payload.get("refresh_token")),
+            "remote_status": remote.get("status"),
+            "remote_unavailable": remote.get("unavailable"),
+            "remote_status_message": remote.get("status_message"),
+            "remote_auth_index": remote.get("auth_index"),
+            "remote_account_id": (remote.get("id_token") or {}).get("chatgpt_account_id") if isinstance(remote.get("id_token"), dict) else None,
         },
     )
 
