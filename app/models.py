@@ -44,6 +44,8 @@ class PoolSummary:
     degraded_count: int = 0
     dead_count: int = 0
     unknown_count: int = 0
+    in_flight_replenish_count: int = 0
+    replenish_cooldown_until: str | None = None
     needs_replenish: bool = False
     replenish_count: int = 0
     last_scan_at: str | None = None

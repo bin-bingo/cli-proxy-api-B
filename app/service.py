@@ -15,6 +15,7 @@ from .config import (
     settings,
 )
 from .health import apply_probe_result, evaluate_auth_file
+from datetime import datetime, timedelta, timezone
 from .models import AuthRecord, PoolState, PoolSummary, utc_now
 from .replenisher import run_replenish
 from .storage import append_jsonl, read_json, read_jsonl_tail, write_json
@@ -274,7 +275,21 @@ class PoolMaintainerService:
             unknown_count=unknown_count,
             last_scan_at=utc_now().isoformat(),
         )
-        available_count = summary.healthy_count + summary.pending_count
+        cooldown_until = None
+        in_flight = self.state.summary.in_flight_replenish_count if self.state.summary else 0
+        raw_cooldown = self.state.summary.replenish_cooldown_until if self.state.summary else None
+        if raw_cooldown:
+            try:
+                cooldown_until = datetime.fromisoformat(raw_cooldown)
+            except Exception:
+                cooldown_until = None
+        if cooldown_until and datetime.now(timezone.utc) >= cooldown_until:
+            cooldown_until = None
+            in_flight = 0
+
+        available_count = summary.healthy_count + summary.pending_count + in_flight
+        summary.in_flight_replenish_count = in_flight
+        summary.replenish_cooldown_until = cooldown_until.isoformat() if cooldown_until else None
         summary.needs_replenish = (
             available_count < self.runtime_settings.min_healthy_count
         )
@@ -301,10 +316,14 @@ class PoolMaintainerService:
             },
         )
 
-        if self.runtime_settings.auto_replenish_enabled and summary.replenish_count > 0:
+        if self.runtime_settings.auto_replenish_enabled and summary.replenish_count > 0 and not summary.replenish_cooldown_until:
             replenish = run_replenish(summary.replenish_count, self.runtime_settings)
             self.state.summary.last_replenish_at = replenish.executed_at
             self.state.summary.last_replenish_result = replenish.message
+            if replenish.success:
+                cooldown_until = datetime.now(timezone.utc) + timedelta(minutes=10)
+                self.state.summary.in_flight_replenish_count = summary.replenish_count
+                self.state.summary.replenish_cooldown_until = cooldown_until.isoformat()
             self._record_history("replenish", replenish.to_dict())
 
         self._save_state()
@@ -328,6 +347,10 @@ class PoolMaintainerService:
             result = run_replenish(desired, self.runtime_settings)
             self.state.summary.last_replenish_at = result.executed_at
             self.state.summary.last_replenish_result = result.message
+            if result.success and desired > 0:
+                cooldown_until = datetime.now(timezone.utc) + timedelta(minutes=10)
+                self.state.summary.in_flight_replenish_count = desired
+                self.state.summary.replenish_cooldown_until = cooldown_until.isoformat()
             self._record_history("replenish", result.to_dict())
             self._save_state()
             return result.to_dict()

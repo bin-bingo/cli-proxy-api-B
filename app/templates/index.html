@@ -27,26 +27,36 @@
       </div>
     </section>
 
-    <section class="cards">
+    <section class="cards cards-5">
       <article class="card"><h2>总库存</h2><div class="metric">{{ status.summary.total_count }}</div></article>
       <article class="card ok"><h2>健康</h2><div class="metric">{{ status.summary.healthy_count }}</div></article>
       <article class="card warn"><h2>待确认</h2><div class="metric">{{ status.summary.pending_count }}</div></article>
-      <article class="card bad"><h2>死亡</h2><div class="metric">{{ status.summary.dead_count }}</div></article>
+      <article class="card warn2">
+        <h2>差</h2>
+        <div class="metric">{{ status.summary.degraded_count }}</div>
+        <div class="substate-list">
+          <div>· 探测超时 / 失败</div>
+          <div>· 限流 / used_percent 过高</div>
+        </div>
+      </article>
+      <article class="card bad"><h2>失效</h2><div class="metric">{{ status.summary.dead_count }}</div></article>
     </section>
 
     <section class="grid">
-      <article class="panel">
+      <article class="panel highlight-panel">
         <h2>池子概览</h2>
         <ul class="kv">
           <li><span>最近扫描</span><strong>{{ status.summary.last_scan_at or '-' }}</strong></li>
-          <li><span>需要补池</span><strong>{{ '是' if status.summary.needs_replenish else '否' }}</strong></li>
-          <li><span>可用库存（健康+待确认）</span><strong>{{ status.summary.healthy_count + status.summary.pending_count }}</strong></li>
+          <li><span>需要补池</span><strong>{% if status.summary.replenish_cooldown_until %}暂停（冷却中）{% else %}{{ '是' if status.summary.needs_replenish else '否' }}{% endif %}</strong></li>
+          <li><span>可用库存（健康+待确认+在途）</span><strong>{{ status.summary.healthy_count + status.summary.pending_count + status.summary.in_flight_replenish_count }}</strong></li>
+          <li><span>在途补池</span><strong>{{ status.summary.in_flight_replenish_count }}</strong></li>
+          <li><span>补池冷却至</span><strong>{{ status.summary.replenish_cooldown_until or '-' }}</strong></li>
           <li><span>建议补量</span><strong>{{ status.summary.replenish_count }}</strong></li>
           <li><span>最近补池</span><strong>{{ status.summary.last_replenish_at or '-' }}</strong></li>
           <li><span>补池结果</span><strong>{{ status.summary.last_replenish_result or '-' }}</strong></li>
         </ul>
       </article>
-      <article class="panel">
+      <article class="panel soft-panel">
         <h2>连接状态摘要</h2>
         <ul class="kv">
           <li><span>CPA 地址</span><strong>{{ settings.cliproxy_base_url }}</strong></li>
