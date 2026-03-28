@@ -112,7 +112,7 @@
         <span class="accord-hint">收起/展开</span>
       </div>
       <div class="accord-body" style="display:none;">
-        <form data-async action="/settings/plugin" method="post" class="settings-form">
+        <form data-async action="/settings/strategy" method="post" class="settings-form">
           <label>最低健康库存
             <input type="number" name="min_healthy_count" min="0" value="{{ settings.min_healthy_count }}" />
           </label>
@@ -161,7 +161,7 @@
         <span class="accord-hint">收起/展开</span>
       </div>
       <div class="accord-body" style="display:none;">
-        <form data-async action="/settings/plugin" method="post" class="settings-form">
+        <form data-async action="/settings/advanced" method="post" class="settings-form">
           <label>Auth 目录
             <input type="text" name="auth_dir" value="{{ settings.auth_dir }}" />
           </label>

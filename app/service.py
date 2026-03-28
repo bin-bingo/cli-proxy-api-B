@@ -64,6 +64,7 @@ class PoolMaintainerService:
     def settings_snapshot(self) -> dict[str, Any]:
         return {
             "cliproxy_base_url": self.runtime_settings.cliproxy_base_url,
+            "cliproxy_timeout_seconds": self.runtime_settings.cliproxy_timeout_seconds,
             "auth_dir": self.runtime_settings.auth_dir,
             "scan_interval_seconds": settings.scan_interval_seconds,
             "min_healthy_count": self.runtime_settings.min_healthy_count,
@@ -72,6 +73,7 @@ class PoolMaintainerService:
             "auto_scan_enabled": self.runtime_settings.auto_scan_enabled,
             "auto_replenish_enabled": self.runtime_settings.auto_replenish_enabled,
             "auto_cleanup_enabled": self.runtime_settings.auto_cleanup_enabled,
+            "replenish_command": self.runtime_settings.replenish_command,
             "replenish_command_configured": bool(
                 self.runtime_settings.replenish_command.strip()
             ),

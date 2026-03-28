@@ -107,43 +107,25 @@ async def html_save_account_keys(request: Request) -> Response:
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.post("/settings/plugin")
-async def html_save_plugin_settings(
+@app.post("/settings/strategy")
+async def html_save_strategy_settings(
     request: Request,
-    cliproxy_timeout_seconds: int | None = Form(None),
-    auth_dir: str | None = Form(None),
     min_healthy_count: int | None = Form(None),
     target_healthy_count: int | None = Form(None),
-    usage_exhaust_threshold: float | None = Form(None),
     auto_scan_enabled: str | None = Form(None),
     auto_replenish_enabled: str | None = Form(None),
-    auto_cleanup_enabled: str | None = Form(None),
-    cleanup_invalid_enabled: str | None = Form(None),
-    cleanup_quota_enabled: str | None = Form(None),
-    cleanup_rate_limit_enabled: str | None = Form(None),
     replenish_mode: str | None = Form(None),
     replenish_concurrency: int | None = Form(None),
     replenish_email_type: str | None = Form(None),
     replenish_auto_cpa: str | None = Form(None),
-    replenish_command: str | None = Form(None),
 ) -> Response:
     updates: dict[str, object] = {}
-    if cliproxy_timeout_seconds is not None:
-        updates["cliproxy_timeout_seconds"] = cliproxy_timeout_seconds
-    if auth_dir is not None:
-        updates["auth_dir"] = auth_dir
     if min_healthy_count is not None:
         updates["min_healthy_count"] = min_healthy_count
     if target_healthy_count is not None:
         updates["target_healthy_count"] = target_healthy_count
-    if usage_exhaust_threshold is not None:
-        updates["usage_exhaust_threshold"] = usage_exhaust_threshold
     updates["auto_scan_enabled"] = auto_scan_enabled is not None
     updates["auto_replenish_enabled"] = auto_replenish_enabled is not None
-    updates["auto_cleanup_enabled"] = auto_cleanup_enabled is not None
-    updates["cleanup_invalid_enabled"] = cleanup_invalid_enabled is not None
-    updates["cleanup_quota_enabled"] = cleanup_quota_enabled is not None
-    updates["cleanup_rate_limit_enabled"] = cleanup_rate_limit_enabled is not None
     if replenish_mode is not None:
         updates["replenish_mode"] = replenish_mode
     if replenish_concurrency is not None:
@@ -151,6 +133,36 @@ async def html_save_plugin_settings(
     if replenish_email_type is not None:
         updates["replenish_email_type"] = replenish_email_type
     updates["replenish_auto_cpa"] = replenish_auto_cpa is not None
+
+    await service.update_runtime_settings(updates)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JSONResponse({"ok": True, "message": "saved"})
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/settings/advanced")
+async def html_save_advanced_settings(
+    request: Request,
+    cliproxy_timeout_seconds: int | None = Form(None),
+    auth_dir: str | None = Form(None),
+    usage_exhaust_threshold: float | None = Form(None),
+    auto_cleanup_enabled: str | None = Form(None),
+    cleanup_invalid_enabled: str | None = Form(None),
+    cleanup_quota_enabled: str | None = Form(None),
+    cleanup_rate_limit_enabled: str | None = Form(None),
+    replenish_command: str | None = Form(None),
+) -> Response:
+    updates: dict[str, object] = {}
+    if cliproxy_timeout_seconds is not None:
+        updates["cliproxy_timeout_seconds"] = cliproxy_timeout_seconds
+    if auth_dir is not None:
+        updates["auth_dir"] = auth_dir
+    if usage_exhaust_threshold is not None:
+        updates["usage_exhaust_threshold"] = usage_exhaust_threshold
+    updates["auto_cleanup_enabled"] = auto_cleanup_enabled is not None
+    updates["cleanup_invalid_enabled"] = cleanup_invalid_enabled is not None
+    updates["cleanup_quota_enabled"] = cleanup_quota_enabled is not None
+    updates["cleanup_rate_limit_enabled"] = cleanup_rate_limit_enabled is not None
     if replenish_command is not None:
         updates["replenish_command"] = replenish_command
 
