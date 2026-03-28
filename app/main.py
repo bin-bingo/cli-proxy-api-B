@@ -118,6 +118,9 @@ async def html_save_plugin_settings(
     auto_scan_enabled: str | None = Form(None),
     auto_replenish_enabled: str | None = Form(None),
     auto_cleanup_enabled: str | None = Form(None),
+    cleanup_invalid_enabled: str | None = Form(None),
+    cleanup_quota_enabled: str | None = Form(None),
+    cleanup_rate_limit_enabled: str | None = Form(None),
     replenish_mode: str | None = Form(None),
     replenish_concurrency: int | None = Form(None),
     replenish_email_type: str | None = Form(None),
@@ -138,6 +141,9 @@ async def html_save_plugin_settings(
     updates["auto_scan_enabled"] = auto_scan_enabled is not None
     updates["auto_replenish_enabled"] = auto_replenish_enabled is not None
     updates["auto_cleanup_enabled"] = auto_cleanup_enabled is not None
+    updates["cleanup_invalid_enabled"] = cleanup_invalid_enabled is not None
+    updates["cleanup_quota_enabled"] = cleanup_quota_enabled is not None
+    updates["cleanup_rate_limit_enabled"] = cleanup_rate_limit_enabled is not None
     if replenish_mode is not None:
         updates["replenish_mode"] = replenish_mode
     if replenish_concurrency is not None:

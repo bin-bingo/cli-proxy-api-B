@@ -99,6 +99,9 @@ class RuntimeSettings:
     replenish_email_type: str = os.environ.get("POOL_REPLENISH_EMAIL_TYPE", "tempmail")
     replenish_auto_cpa: bool = os.environ.get("POOL_REPLENISH_AUTO_CPA", "true").strip().lower() in {"1", "true", "yes", "on"}
     auto_cleanup_enabled: bool = os.environ.get("POOL_AUTO_CLEANUP_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    cleanup_invalid_enabled: bool = os.environ.get("POOL_CLEANUP_INVALID_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    cleanup_quota_enabled: bool = os.environ.get("POOL_CLEANUP_QUOTA_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    cleanup_rate_limit_enabled: bool = os.environ.get("POOL_CLEANUP_RATE_LIMIT_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

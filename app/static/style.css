@@ -132,6 +132,11 @@ button, input {
   align-items: center;
 }
 
+.subcheck {
+  padding-left: 14px;
+  color: #b8c7eb;
+}
+
 .settings-actions {
   grid-column: 1 / -1;
   display: flex;

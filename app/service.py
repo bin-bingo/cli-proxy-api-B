@@ -82,6 +82,10 @@ class PoolMaintainerService:
                 self.runtime_settings.registration_key.strip()
             ),
             "registration_base_url": self.runtime_settings.registration_base_url,
+            "auto_cleanup_enabled": self.runtime_settings.auto_cleanup_enabled,
+            "cleanup_invalid_enabled": self.runtime_settings.cleanup_invalid_enabled,
+            "cleanup_quota_enabled": self.runtime_settings.cleanup_quota_enabled,
+            "cleanup_rate_limit_enabled": self.runtime_settings.cleanup_rate_limit_enabled,
             "replenish_mode": self.runtime_settings.replenish_mode,
             "replenish_concurrency": self.runtime_settings.replenish_concurrency,
             "replenish_email_type": self.runtime_settings.replenish_email_type,
@@ -178,6 +182,24 @@ class PoolMaintainerService:
                         self.runtime_settings.auto_cleanup_enabled,
                     )
                 ),
+                cleanup_invalid_enabled=bool(
+                    merged.get(
+                        "cleanup_invalid_enabled",
+                        self.runtime_settings.cleanup_invalid_enabled,
+                    )
+                ),
+                cleanup_quota_enabled=bool(
+                    merged.get(
+                        "cleanup_quota_enabled",
+                        self.runtime_settings.cleanup_quota_enabled,
+                    )
+                ),
+                cleanup_rate_limit_enabled=bool(
+                    merged.get(
+                        "cleanup_rate_limit_enabled",
+                        self.runtime_settings.cleanup_rate_limit_enabled,
+                    )
+                ),
                 replenish_command=self._as_str(
                     merged.get("replenish_command"),
                     self.runtime_settings.replenish_command,
@@ -213,11 +235,17 @@ class PoolMaintainerService:
             save_runtime_settings(runtime)
             self._refresh_client()
             if self.state.summary:
-                self.state.summary.cleanup_mode = (
-                    "已启用，仅清除明确失效账号"
-                    if runtime.auto_cleanup_enabled
-                    else "未启用自动清除"
-                )
+                if runtime.auto_cleanup_enabled:
+                    enabled = []
+                    if runtime.cleanup_invalid_enabled:
+                        enabled.append("失效")
+                    if runtime.cleanup_quota_enabled:
+                        enabled.append("额度不足")
+                    if runtime.cleanup_rate_limit_enabled:
+                        enabled.append("限流")
+                    self.state.summary.cleanup_mode = "已启用：" + (" / ".join(enabled) if enabled else "未选择规则")
+                else:
+                    self.state.summary.cleanup_mode = "未启用自动清除"
             self.state.settings_snapshot = self.settings_snapshot()
             self._save_state()
             return runtime
@@ -335,13 +363,25 @@ class PoolMaintainerService:
         previous_total = self.state.summary.total_count if self.state.summary else 0
         cleanup_removed = 0
         if self.runtime_settings.auto_cleanup_enabled:
-            dead_names = [item.name for item in records if item.status == "dead"]
-            for dead_name in dead_names:
+            def should_cleanup(item: AuthRecord) -> bool:
+                if item.status == "dead" and self.runtime_settings.cleanup_invalid_enabled:
+                    return True
+                if self.runtime_settings.cleanup_quota_enabled and isinstance(item.quota_used_percent, (int, float)) and item.quota_used_percent >= self.runtime_settings.usage_exhaust_threshold:
+                    return True
+                if self.runtime_settings.cleanup_rate_limit_enabled and (
+                    "rate limit" in (item.reason or "").lower() or "probe limited (429)" in (item.reason or "").lower()
+                ):
+                    return True
+                return False
+
+            delete_names = [item.name for item in records if should_cleanup(item)]
+            delete_name_set = set(delete_names)
+            for dead_name in delete_names:
                 status_code, payload = self.client.delete_auth_file(dead_name)
                 if 200 <= status_code < 300:
                     cleanup_removed += 1
             if cleanup_removed:
-                records = [item for item in records if item.status != "dead"]
+                records = [item for item in records if item.name not in delete_name_set]
         current_total = len(records)
         added_count = max(0, current_total - previous_total)
         removed_count = (
@@ -357,9 +397,21 @@ class PoolMaintainerService:
             unknown_count=unknown_count,
             added_count=added_count,
             removed_count=removed_count,
-            cleanup_mode="已启用，仅清除明确失效账号"
-            if self.runtime_settings.auto_cleanup_enabled
-            else "未启用自动清除",
+            cleanup_mode=(
+                "已启用：" + " / ".join(
+                    [
+                        label
+                        for enabled, label in [
+                            (self.runtime_settings.cleanup_invalid_enabled, "失效"),
+                            (self.runtime_settings.cleanup_quota_enabled, "额度不足"),
+                            (self.runtime_settings.cleanup_rate_limit_enabled, "限流"),
+                        ]
+                        if enabled
+                    ]
+                )
+                if self.runtime_settings.auto_cleanup_enabled
+                else "未启用自动清除"
+            ),
             last_scan_at=utc_now().isoformat(),
         )
         cooldown_until = None

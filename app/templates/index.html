@@ -175,7 +175,16 @@
             <input type="text" name="replenish_command" value="{{ status.settings_snapshot.replenish_command if status.settings_snapshot.replenish_command is defined else '' }}" />
           </label>
           <label class="checkbox-row">
-            <input type="checkbox" name="auto_cleanup_enabled" {% if status.settings_snapshot.auto_cleanup_enabled %}checked{% endif %} /> 自动清除失效账号（仅 dead）
+            <input type="checkbox" name="auto_cleanup_enabled" {% if status.settings_snapshot.auto_cleanup_enabled %}checked{% endif %} /> 启用自动清除
+          </label>
+          <label class="checkbox-row subcheck">
+            <input type="checkbox" name="cleanup_invalid_enabled" {% if status.settings_snapshot.cleanup_invalid_enabled %}checked{% endif %} /> 清除失效
+          </label>
+          <label class="checkbox-row subcheck">
+            <input type="checkbox" name="cleanup_quota_enabled" {% if status.settings_snapshot.cleanup_quota_enabled %}checked{% endif %} /> 清除额度不足
+          </label>
+          <label class="checkbox-row subcheck">
+            <input type="checkbox" name="cleanup_rate_limit_enabled" {% if status.settings_snapshot.cleanup_rate_limit_enabled %}checked{% endif %} /> 清除限流
           </label>
           <div class="settings-actions">
             <button type="submit">保存高级设置</button>
