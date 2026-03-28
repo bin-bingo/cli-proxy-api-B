@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="pool-maintainer"
-APP_PORT=8004
+APP_PORT=8420
 PID_FILE="$ROOT_DIR/data/${APP_NAME}.pid"
 LOG_FILE="$ROOT_DIR/data/${APP_NAME}.log"
 
